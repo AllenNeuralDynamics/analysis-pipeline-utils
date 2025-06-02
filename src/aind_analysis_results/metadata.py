@@ -8,17 +8,93 @@ suggested process for analysis wrapper capsule:
 """
 
 from datetime import datetime
+from typing import Dict, Any, Optional, List
 import os
 import subprocess
 import aind_data_schema.core.processing as ps
 from aind_data_access_api.document_db import MetadataDbClient
 from codeocean import CodeOcean
+from codeocean.computation import Computation, PipelineProcess
 
+PARAM_PREFIX = "param_"
+
+def extract_parameters(
+    computation: Computation,
+    capsule_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Extract and combine parameters from various sources in the computation.
+    
+    Args:
+        computation: The computation object containing parameters
+        capsule_id: Optional capsule ID to filter process-specific parameters
+    
+    Returns:
+        Dict[str, Any]: Combined parameters from all sources
+    """
+    parameters = {}
+    
+    # Extract ordered parameters
+    if computation.parameters:
+        ordered_params = {
+            f"{PARAM_PREFIX}{i}": param 
+            for i, param in enumerate(computation.parameters)
+            if param
+        }
+        parameters.update(ordered_params)
+    
+    # Extract named parameters
+    if computation.named_parameters:
+        named_params = {
+            param.param_name: param.value
+            for param in computation.named_parameters
+            if param
+        }
+        parameters.update(named_params)
+    
+    # Extract capsule-specific parameters if capsule ID provided
+    if capsule_id:
+        process_params = _get_capsule_parameters(computation.processes, capsule_id)
+        parameters.update(process_params)
+    
+    return parameters
+
+def _get_capsule_parameters(
+    processes: List[PipelineProcess],
+    capsule_id: str
+) -> Dict[str, Any]:
+    """Extract parameters for a specific capsule from computation processes.
+    
+    Args:
+        processes: List of computation processes
+        capsule_id: Target capsule ID to filter parameters
+        
+    Returns:
+        Dict[str, Any]: Parameters specific to the target capsule
+    """
+    for process in processes:
+        if process.capsule_id == capsule_id:
+            return {
+                param["name"] if param["name"] else f"{PARAM_PREFIX}{i}": param["value"]
+                for i, param in enumerate(process.parameters)
+                if param["value"]
+            }
+    return {}
 
 def construct_processing_record(
-    analysis_job_dict,  # say this contains nested analysis-specific metadata
+    analysis_job_dict: Dict[str, Any],
     **kwargs,
 ) -> ps.DataProcess:
+    """Construct a processing record by combining Code Ocean metadata with analysis job data.
+    
+    Args:
+        analysis_job_dict: Dictionary containing analysis metadata including:
+            - s3_location (str): S3 URL for input data
+            - parameters (Dict[str, Any]): Analysis parameters to update
+        **kwargs: Additional metadata to update on the process
+        
+    Returns:
+        ps.DataProcess: Constructed processing record with combined metadata
+    """
     process = query_code_ocean_metadata()
     # add s3_location and parameters from analysis_job_dict
     process.code.input_data.append(ps.DataAsset(url=analysis_job_dict["s3_location"]))
@@ -47,9 +123,7 @@ def query_code_ocean_metadata():
     
     # Extract relevant metadata from the computation
     process = ps.DataProcess.model_construct(
-        # name may be only set for runs named after the fact?
-        # pull from capsule or pipeline name? 
-        name=computation.name,
+        # computation.name likely only set for named runs
         process_type=ps.ProcessName.ANALYSIS,
         process_stage=ps.ProcessStage.ANALYSIS,
         start_date_time=datetime.fromtimestamp(computation.created),
@@ -57,62 +131,18 @@ def query_code_ocean_metadata():
             computation.created + computation.run_time
         ),
     )
-    # git origin URL
-    shell_command = "git remote get-url origin"
-    result = subprocess.run(shell_command, shell=True, capture_output=True, text=True)
-    if result.returncode == 0:
-        git_remote_url = result.stdout.strip()
-    else:
-        git_remote_url = ""
-    # git commit hash
-    shell_command = "git rev-parse HEAD"
-    result = subprocess.run(shell_command, shell=True, capture_output=True, text=True)
-    if result.returncode == 0:
-        git_commit_hash = result.stdout.strip()
-    else:
-        git_commit_hash = ""
-
-    capsule = client.capsules.get_capsule(computation.capsule_id)
     # not sure if this is the best way to get this info
     # but not recorded in computation object?
-    process.experimenters = [ps.Person(name=capsule.owner)]
+    pipeline = client.capsules.get_capsule(computation.capsule_id)
+    process.experimenters = [ps.Person(name=pipeline.owner)]
+    process.name = pipeline.name
 
-    # pipeline-level ordered and named parameters
-    code = ps.Code(
-        # git remote URL from shell command
-        url=git_remote_url,
-        version=git_commit_hash,
-        run_script="code/run",
-        name=capsule.name,
+    # Extract parameters using the new helper function
+    parameters = extract_parameters(
+        computation,
+        capsule_id=os.getenv("CO_CAPSULE_ID")
     )
-    parameters = {}
-    if computation.parameters:
-        parameters.update(
-            {
-                f"param_{i}": param
-                for i, param in enumerate(computation.parameters)
-                if param
-            }
-        )
-    if computation.named_parameters:
-        parameters.update(
-            {
-                param.param_name: param.value
-                for param in computation.named_parameters
-                if param
-            }
-        )
-    # capsule-specific parameters
-    if os.getenv("CO_CAPSULE_ID"):
-        for process in computation.processes:
-            if process.capsule_id == os.getenv("CO_CAPSULE_ID"):
-                parameters.update(
-                    {
-                        param["name"] if param["name"] else f"param_{i}": param["value"]
-                        for i, param in enumerate(process.parameters)
-                        if param["value"]
-                    }
-                )
+    code = get_code_metadata_from_git()
     code.parameters = parameters
     
     if computation.data_assets:
@@ -123,10 +153,64 @@ def query_code_ocean_metadata():
 
     process.code = code
     return process
+
+def _run_git_command(command: List[str], default: str = "") -> str:
+    """Run a git command safely and return its output.
     
+    Args:
+        command: List of command arguments
+        default: Default value to return if command fails
+        
+    Returns:
+        str: Command output or default value if command fails
+    """
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False  # Don't raise on non-zero exit
+        )
+        return result.stdout.strip() if result.returncode == 0 else default
+    except subprocess.SubprocessError:
+        return default
+
+def get_code_metadata_from_git() -> ps.Code:
+    """Get git metadata for the current repository.
+    
+    Returns:
+        ps.Code: Code object with git metadata
+    """
+    # Use safer command list format instead of shell=True
+    git_remote_url = _run_git_command(["git", "remote", "get-url", "origin"])
+    git_commit_hash = _run_git_command(["git", "rev-parse", "HEAD"])
+    
+    # Get repo name from remote URL instead of shell command
+    repo_name = git_remote_url.split("/")[-1].replace(".git", "") if git_remote_url else ""
+
+    code = ps.Code(
+        # git remote URL from shell command
+        url=git_remote_url,
+        version=git_commit_hash,
+        run_script="code/run",
+        name=repo_name,
+    )
+    return code
 
 
-def get_data_asset_url(client, data_asset_id: str) -> str:
+def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
+    """Get the S3 URL for a data asset.
+    
+    Args:
+        client: CodeOcean client instance
+        data_asset_id: ID of the data asset
+        
+    Returns:
+        str: S3 URL for the data asset
+        
+    Raises:
+        ValueError: If data asset origin is not AWS
+    """
     bucket = client.data_assets.get_data_asset(data_asset_id).source_bucket
     if bucket.origin == "aws":
         return f"s3://{bucket.bucket}/{bucket.prefix}"
@@ -164,7 +248,7 @@ def get_docdb_record(processing: ps.DataProcess):
         return responses[0]
     elif len(responses) > 1:
         raise ValueError(
-            "Multiple records found in document database. "
+            "Multiple records found in document database. This indicates a potential data integrity issue."
         )
     else:
         return None

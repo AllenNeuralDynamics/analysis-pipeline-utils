@@ -19,7 +19,8 @@ dynamic = ["version"]
 dependencies = [
     'aind-data-schema @ git+https://github.com/AllenNeuralDynamics/aind-data-schema.git@release-v2.0.0',
     'aind-data-access-api',
-    'codeocean'
+    'codeocean',
+    'fsspec[s3]'
 ]
 
 [project.optional-dependencies]

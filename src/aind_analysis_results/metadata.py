@@ -110,7 +110,7 @@ def query_code_ocean_metadata():
     # Get the Code Ocean domain and API token from environment variables
     domain = os.getenv("CODEOCEAN_DOMAIN")
     token = os.getenv("CODEOCEAN_API_TOKEN")
-    computation_id = os.getenv("CODEOCEAN_COMPUTATION_ID")
+    computation_id = os.getenv("CO_COMPUTATION_ID")
     
     if not all([domain, token, computation_id]):
         raise ValueError("Warning: Missing required Code Ocean environment variables")

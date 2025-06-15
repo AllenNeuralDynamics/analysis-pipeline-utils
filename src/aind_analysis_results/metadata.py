@@ -107,7 +107,7 @@ def construct_processing_record(
         
     process.code.parameters.update(analysis_job_dict["parameters"])
     # add any other metadata from user
-    process.update(**kwargs)
+    process.code.parameters.update(**kwargs)
     return process
 
 def query_code_ocean_metadata():

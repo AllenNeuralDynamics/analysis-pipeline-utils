@@ -99,7 +99,11 @@ def construct_processing_record(
     """
     process = query_code_ocean_metadata()
     # add s3_location and parameters from analysis_job_dict
-    process.code.input_data = [ps.DataAsset(url=analysis_job_dict["s3_location"])]
+    if process.code.input_data is None:
+        process.code.input_data = [ps.DataAsset(url=analysis_job_dict["s3_location"])]
+    else:
+        process.code.input_data.append(ps.DataAsset(url=analysis_job_dict["s3_location"]))
+        
     process.code.parameters.update(analysis_job_dict["parameters"])
     # add any other metadata from user
     process.update(**kwargs)

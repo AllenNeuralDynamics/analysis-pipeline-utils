@@ -249,7 +249,7 @@ def get_docdb_record(processing: ps.DataProcess):
     """
     client: MetadataDbClient = get_docdb_client()
     responses = client.retrieve_docdb_records(
-        filter_query={"code": processing.code.model_dunp()},
+        filter_query={"code": processing.code.model_dump()},
     )
     if len(responses) == 1:
         return responses[0]

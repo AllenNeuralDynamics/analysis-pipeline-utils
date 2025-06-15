@@ -230,7 +230,7 @@ def write_to_docdb(processing: ps.DataProcess):
     Write the processing record to the document database
     """
     client = get_docdb_client()
-    response = client.insert_one_docdb_record(processing)
+    response = client.insert_one_docdb_record(processing.model_dump())
     return response
 
 
@@ -249,7 +249,7 @@ def get_docdb_record(processing: ps.DataProcess):
     """
     client: MetadataDbClient = get_docdb_client()
     responses = client.retrieve_docdb_records(
-        filter_query={"code": processing.code},
+        filter_query={"code": processing.code.model_dunp()},
     )
     if len(responses) == 1:
         return responses[0]

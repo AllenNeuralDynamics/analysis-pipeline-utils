@@ -71,6 +71,8 @@ def _get_capsule_parameters(
     Returns:
         Dict[str, Any]: Parameters specific to the target capsule
     """
+    if processes is None:
+        return {}
     for process in processes:
         if process.capsule_id == capsule_id:
             return {

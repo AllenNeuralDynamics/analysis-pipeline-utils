@@ -41,7 +41,7 @@ def extract_parameters(
             if param
         }
         parameters.update(ordered_params)
-    
+    """
     # Extract named parameters
     if computation.named_parameters:
         named_params = {
@@ -50,7 +50,7 @@ def extract_parameters(
             if param
         }
         parameters.update(named_params)
-    
+    """
     # Extract capsule-specific parameters if capsule ID provided
     if capsule_id:
         process_params = _get_capsule_parameters(computation.processes, capsule_id)

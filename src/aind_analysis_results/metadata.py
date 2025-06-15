@@ -230,7 +230,9 @@ def write_to_docdb(processing: ps.DataProcess):
     Write the processing record to the document database
     """
     client = get_docdb_client()
-    response = client.insert_one_docdb_record(processing.model_dump())
+    processing_dict = processing.model_dump()
+    processing_dict["code"]["run_script"] = processing_dict["code"]["run_script"].as_posix()
+    response = client.insert_one_docdb_record(processing_dict)
     return response
 
 
@@ -249,7 +251,7 @@ def get_docdb_record(processing: ps.DataProcess):
     """
     client: MetadataDbClient = get_docdb_client()
     processing_code_dict = processing.code.model_dump()
-    processing_code_dict['run_script'] = processing_code_dict['run_script'].as_posix()
+    processing_code_dict["run_script"] = processing_code_dict["run_script"].as_posix()
     
     responses = client.retrieve_docdb_records(
         filter_query={"code": processing_code_dict},

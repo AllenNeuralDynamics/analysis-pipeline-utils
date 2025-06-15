@@ -13,6 +13,7 @@ import os
 import subprocess
 import aind_data_schema.core.processing as ps
 from aind_data_access_api.document_db import MetadataDbClient
+from aind_data_schema.components.identifiers import DataAsset
 from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
 
@@ -100,9 +101,9 @@ def construct_processing_record(
     process = query_code_ocean_metadata()
     # add s3_location and parameters from analysis_job_dict
     if process.code.input_data is None:
-        process.code.input_data = [ps.DataAsset(url=analysis_job_dict["s3_location"])]
+        process.code.input_data = [DataAsset(url=analysis_job_dict["s3_location"])]
     else:
-        process.code.input_data.append(ps.DataAsset(url=analysis_job_dict["s3_location"]))
+        process.code.input_data.append(DataAsset(url=analysis_job_dict["s3_location"]))
         
     process.code.parameters.update(analysis_job_dict["parameters"])
     # add any other metadata from user
@@ -153,7 +154,7 @@ def query_code_ocean_metadata():
     
     if computation.data_assets:
         code.input_data = [
-            ps.DataAsset(get_data_asset_url(client, asset.id))
+            DataAsset(get_data_asset_url(client, asset.id))
             for asset in computation.data_assets
         ]
 

@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import os
 import subprocess
+import uuid
 import aind_data_schema.core.processing as ps
 from aind_data_access_api.document_db import MetadataDbClient
 from aind_data_schema.components.identifiers import DataAsset
@@ -232,6 +233,7 @@ def write_to_docdb(processing: ps.DataProcess):
     client = get_docdb_client()
     processing_dict = processing.model_dump()
     processing_dict["code"]["run_script"] = processing_dict["code"]["run_script"].as_posix()
+    processing_dict["_id"] = str(uuid.uuid4())
     response = client.insert_one_docdb_record(processing_dict)
     return response
 

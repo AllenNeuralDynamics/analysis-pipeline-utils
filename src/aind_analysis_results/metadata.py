@@ -248,8 +248,11 @@ def get_docdb_record(processing: ps.DataProcess):
     Get the document database record for the given processing object
     """
     client: MetadataDbClient = get_docdb_client()
+    processing_code_dict = processing.code.model_dump()
+    processing_code_dict['run_script'] = processing_code_dict['run_script'].as_posix()
+    
     responses = client.retrieve_docdb_records(
-        filter_query={"code": processing.code.model_dump()},
+        filter_query={"code": processing_code_dict},
     )
     if len(responses) == 1:
         return responses[0]

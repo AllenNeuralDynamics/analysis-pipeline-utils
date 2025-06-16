@@ -146,7 +146,7 @@ def query_code_ocean_metadata():
     )
     # not sure if this is the best way to get this info
     # but not recorded in computation object?
-    pipeline = client.capsules.get_capsule(os.getenv("CO_PIPELINE_ID"))
+    pipeline = client.capsules.get_capsule(os.getenv("CO_PIPELINE_ID") or os.getenv("CO_CAPSULE_ID"))
     process.experimenters = [ps.Person(name=pipeline.owner)]
     process.name = pipeline.name
 

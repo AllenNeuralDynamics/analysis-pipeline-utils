@@ -13,6 +13,7 @@ import os
 import subprocess
 import uuid
 import aind_data_schema.core.processing as ps
+from aind_data_schema.components.identifiers import DataAsset
 from aind_data_access_api.document_db import MetadataDbClient
 from aind_data_schema.components.identifiers import DataAsset
 from codeocean import CodeOcean
@@ -43,18 +44,9 @@ def extract_parameters(
             if param
         }
         parameters.update(ordered_params)
-    """
-    # Extract named parameters
-    if computation.named_parameters:
-        named_params = {
-            param.param_name: param.value
-            for param in computation.named_parameters
-            if param
-        }
-        parameters.update(named_params)
-    """
+
     # Extract capsule-specific parameters if capsule ID provided
-    if capsule_id:
+    if capsule_id and computation.processes:
         process_params = _get_capsule_parameters(computation.processes, capsule_id)
         parameters.update(process_params)
     
@@ -78,9 +70,9 @@ def _get_capsule_parameters(
     for process in processes:
         if process.capsule_id == capsule_id:
             return {
-                param["name"] if param["name"] else f"{PARAM_PREFIX}{i}": param["value"]
+                param.name if param.name else f"{PARAM_PREFIX}{i}": param.value
                 for i, param in enumerate(process.parameters)
-                if param["value"]
+                if param.value
             }
     return {}
 
@@ -101,6 +93,7 @@ def construct_processing_record(
     """
     process = query_code_ocean_metadata()
     # add s3_location and parameters from analysis_job_dict
+
     if process.code.input_data is None:
         process.code.input_data = [DataAsset(url=analysis_job_dict["s3_location"])]
     else:
@@ -109,22 +102,33 @@ def construct_processing_record(
     process.code.parameters.update(analysis_job_dict["parameters"])
     # add any other metadata from user
     process.code.parameters.update(**kwargs)
+
     return process
+
+def _initialize_codeocean_client() -> CodeOcean:
+    """Initialize Code Ocean client using environment variables.
+    
+    Returns:
+        CodeOcean: Initialized Code Ocean client
+        
+    Raises:
+        ValueError: If required environment variables are missing
+    """
+    domain = os.getenv("CODEOCEAN_DOMAIN")
+    token = os.getenv("CODEOCEAN_API_TOKEN")
+    
+    if not all([domain, token]):
+        raise ValueError("Warning: Missing required Code Ocean environment variables")
+    
+    return CodeOcean(domain=domain, token=token)
 
 def query_code_ocean_metadata():
     """
     Query Code Ocean API for metadata about the analysis
     """
-    # Get the Code Ocean domain and API token from environment variables
-    domain = os.getenv("CODEOCEAN_DOMAIN")
-    token = os.getenv("CODEOCEAN_API_TOKEN")
+    # Initialize the Code Ocean client and get computation ID
+    client = _initialize_codeocean_client()
     computation_id = os.getenv("CO_COMPUTATION_ID")
-    
-    if not all([domain, token, computation_id]):
-        raise ValueError("Warning: Missing required Code Ocean environment variables")
-    
-    # Initialize the Code Ocean client
-    client = CodeOcean(domain=domain, token=token)
     
     # Get the current computation details
     computation = client.computations.get_computation(computation_id)
@@ -141,7 +145,7 @@ def query_code_ocean_metadata():
     )
     # not sure if this is the best way to get this info
     # but not recorded in computation object?
-    pipeline = client.capsules.get_capsule(os.getenv("CO_CAPSULE_ID"))
+    pipeline = client.capsules.get_capsule(os.getenv("CO_PIPELINE_ID"))
     process.experimenters = [ps.Person(name=pipeline.owner)]
     process.name = pipeline.name
 
@@ -219,11 +223,13 @@ def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
     Raises:
         ValueError: If data asset origin is not AWS
     """
-    bucket = client.data_assets.get_data_asset(data_asset_id).source_bucket
-    if bucket.origin == "aws":
-        return f"s3://{bucket.bucket}/{bucket.prefix}"
+    data_asset = client.data_assets.get_data_asset(data_asset_id)
+    if data_asset.source_bucket and data_asset.source_bucket.origin == "aws":
+        bucket = data_asset.source_bucket.bucket
+        prefix = data_asset.source_bucket.prefix or ""
+        return f"s3://{bucket}/{prefix}"
     else:
-        raise ValueError(f"Data asset origin {bucket.origin} not supported")
+        raise ValueError(f"Data asset source bucket {data_asset.source_bucket} not supported.")
 
 
 def write_to_docdb(processing: ps.DataProcess):

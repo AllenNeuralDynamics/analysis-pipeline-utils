@@ -13,6 +13,7 @@ import os
 import subprocess
 import uuid
 import aind_data_schema.core.processing as ps
+from aind_data_schema.core.metadata import Metadata
 from aind_data_schema.components.identifiers import DataAsset
 from aind_data_access_api.document_db import MetadataDbClient
 from aind_data_schema.components.identifiers import DataAsset
@@ -232,15 +233,12 @@ def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
         raise ValueError(f"Data asset source bucket {data_asset.source_bucket} not supported.")
 
 
-def write_to_docdb(processing: ps.DataProcess):
+def write_to_docdb(metadata: Metadata):
     """
     Write the processing record to the document database
     """
     client = get_docdb_client()
-    processing_dict = processing.model_dump()
-    processing_dict["code"]["run_script"] = processing_dict["code"]["run_script"].as_posix()
-
-    response = client.insert_one_docdb_record(processing_dict)
+    response = client.insert_one_docdb_record(metadata.model_dump_json())
     return response
 
 
@@ -262,7 +260,7 @@ def get_docdb_record(processing: ps.DataProcess):
     processing_code_dict["run_script"] = processing_code_dict["run_script"].as_posix()
     
     responses = client.retrieve_docdb_records(
-        filter_query={"code": processing_code_dict},
+        filter_query={"processing.data_processes[0].code": processing.code.model_dump_json()},
     )
     if len(responses) == 1:
         return responses[0]

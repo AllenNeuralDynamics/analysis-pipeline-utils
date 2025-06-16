@@ -11,9 +11,11 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import os
 import subprocess
+import uuid
 import aind_data_schema.core.processing as ps
 from aind_data_schema.components.identifiers import DataAsset
 from aind_data_access_api.document_db import MetadataDbClient
+from aind_data_schema.components.identifiers import DataAsset
 from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
 
@@ -36,12 +38,13 @@ def extract_parameters(
     
     # Extract ordered parameters
     if computation.parameters:
-        named_params = {
-            param.name if param.name else param.param_name: param.value
-            for param in computation.parameters
+        ordered_params = {
+            f"{PARAM_PREFIX}{i}": param 
+            for i, param in enumerate(computation.parameters)
+            if param
         }
-        parameters.update(named_params)
-    
+        parameters.update(ordered_params)
+
     # Extract capsule-specific parameters if capsule ID provided
     if capsule_id and computation.processes:
         process_params = _get_capsule_parameters(computation.processes, capsule_id)
@@ -62,6 +65,8 @@ def _get_capsule_parameters(
     Returns:
         Dict[str, Any]: Parameters specific to the target capsule
     """
+    if processes is None:
+        return {}
     for process in processes:
         if process.capsule_id == capsule_id:
             return {
@@ -88,8 +93,15 @@ def construct_processing_record(
     """
     process = query_code_ocean_metadata()
     # add s3_location and parameters from analysis_job_dict
-    process.code.input_data.append(DataAsset(url=analysis_job_dict["s3_location"]))
-    process.code.parameters = process.code.parameters.model_copy(update=analysis_job_dict["parameters"])
+
+    if process.code.input_data is None:
+        process.code.input_data = [DataAsset(url=analysis_job_dict["s3_location"])]
+    else:
+        process.code.input_data.append(DataAsset(url=analysis_job_dict["s3_location"]))
+        
+    process.code.parameters.update(analysis_job_dict["parameters"])
+    # add any other metadata from user
+    process.code.parameters.update(**kwargs)
 
     return process
 
@@ -147,7 +159,7 @@ def query_code_ocean_metadata():
     
     if computation.data_assets:
         code.input_data = [
-            DataAsset(url=get_data_asset_url(client, asset.id))
+            DataAsset(get_data_asset_url(client, asset.id))
             for asset in computation.data_assets
         ]
 
@@ -225,7 +237,10 @@ def write_to_docdb(processing: ps.DataProcess):
     Write the processing record to the document database
     """
     client = get_docdb_client()
-    response = client.insert_one_docdb_record(processing)
+    processing_dict = processing.model_dump()
+    processing_dict["code"]["run_script"] = processing_dict["code"]["run_script"].as_posix()
+
+    response = client.insert_one_docdb_record(processing_dict)
     return response
 
 
@@ -243,8 +258,11 @@ def get_docdb_record(processing: ps.DataProcess):
     Get the document database record for the given processing object
     """
     client: MetadataDbClient = get_docdb_client()
+    processing_code_dict = processing.code.model_dump()
+    processing_code_dict["run_script"] = processing_code_dict["run_script"].as_posix()
+    
     responses = client.retrieve_docdb_records(
-        filter_query={"code": processing.code},
+        filter_query={"code": processing_code_dict},
     )
     if len(responses) == 1:
         return responses[0]

@@ -233,7 +233,7 @@ def write_to_docdb(processing: ps.DataProcess):
     client = get_docdb_client()
     processing_dict = processing.model_dump()
     processing_dict["code"]["run_script"] = processing_dict["code"]["run_script"].as_posix()
-    processing_dict["_id"] = str(uuid.uuid4())
+
     response = client.insert_one_docdb_record(processing_dict)
     return response
 

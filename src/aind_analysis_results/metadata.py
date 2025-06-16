@@ -35,24 +35,14 @@ def extract_parameters(
     
     # Extract ordered parameters
     if computation.parameters:
-        ordered_params = {
-            f"{PARAM_PREFIX}{i}": param 
-            for i, param in enumerate(computation.parameters)
-            if param
-        }
-        parameters.update(ordered_params)
-    
-    # Extract named parameters
-    if computation.named_parameters:
         named_params = {
-            param.param_name: param.value
-            for param in computation.named_parameters
-            if param
+            param.name if param.name else param.param_name: param.value
+            for param in computation.parameters
         }
         parameters.update(named_params)
     
     # Extract capsule-specific parameters if capsule ID provided
-    if capsule_id:
+    if capsule_id and computation.processes:
         process_params = _get_capsule_parameters(computation.processes, capsule_id)
         parameters.update(process_params)
     
@@ -74,9 +64,9 @@ def _get_capsule_parameters(
     for process in processes:
         if process.capsule_id == capsule_id:
             return {
-                param["name"] if param["name"] else f"{PARAM_PREFIX}{i}": param["value"]
+                param.name if param.name else f"{PARAM_PREFIX}{i}": param.value
                 for i, param in enumerate(process.parameters)
-                if param["value"]
+                if param.value
             }
     return {}
 
@@ -133,7 +123,7 @@ def query_code_ocean_metadata():
     )
     # not sure if this is the best way to get this info
     # but not recorded in computation object?
-    pipeline = client.capsules.get_capsule(os.getenv("CO_CAPSULE_ID"))
+    pipeline = client.capsules.get_capsule(os.getenv("CO_PIPELINE_ID"))
     process.experimenters = [ps.Person(name=pipeline.owner)]
     process.name = pipeline.name
 
@@ -147,7 +137,7 @@ def query_code_ocean_metadata():
     
     if computation.data_assets:
         code.input_data = [
-            ps.DataAsset(get_data_asset_url(client, asset.id))
+            ps.DataAsset(url=get_data_asset_url(client, asset.id))
             for asset in computation.data_assets
         ]
 
@@ -211,11 +201,13 @@ def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
     Raises:
         ValueError: If data asset origin is not AWS
     """
-    bucket = client.data_assets.get_data_asset(data_asset_id).source_bucket
-    if bucket.origin == "aws":
-        return f"s3://{bucket.bucket}/{bucket.prefix}"
+    data_asset = client.data_assets.get_data_asset(data_asset_id)
+    if data_asset.source_bucket and data_asset.source_bucket.origin == "aws":
+        bucket = data_asset.source_bucket.bucket
+        prefix = data_asset.source_bucket.prefix or ""
+        return f"s3://{bucket}/{prefix}"
     else:
-        raise ValueError(f"Data asset origin {bucket.origin} not supported")
+        raise ValueError(f"Data asset source bucket {data_asset.source_bucket} not supported.")
 
 
 def write_to_docdb(processing: ps.DataProcess):

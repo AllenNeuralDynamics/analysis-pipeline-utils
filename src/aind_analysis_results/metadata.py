@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, List
 import os
 import subprocess
 import aind_data_schema.core.processing as ps
+from aind_data_schema.components.identifiers import DataAsset
 from aind_data_access_api.document_db import MetadataDbClient
 from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
@@ -87,26 +88,35 @@ def construct_processing_record(
     """
     process = query_code_ocean_metadata()
     # add s3_location and parameters from analysis_job_dict
-    process.code.input_data.append(ps.DataAsset(url=analysis_job_dict["s3_location"]))
-    process.code.parameters.update(analysis_job_dict["parameters"])
-    # add any other metadata from user
-    process.update(**kwargs)
+    process.code.input_data.append(DataAsset(url=analysis_job_dict["s3_location"]))
+    process.code.parameters = process.code.parameters.model_copy(update=analysis_job_dict["parameters"])
+
     return process
+
+def _initialize_codeocean_client() -> CodeOcean:
+    """Initialize Code Ocean client using environment variables.
+    
+    Returns:
+        CodeOcean: Initialized Code Ocean client
+        
+    Raises:
+        ValueError: If required environment variables are missing
+    """
+    domain = os.getenv("CODEOCEAN_DOMAIN")
+    token = os.getenv("CODEOCEAN_API_TOKEN")
+    
+    if not all([domain, token]):
+        raise ValueError("Warning: Missing required Code Ocean environment variables")
+    
+    return CodeOcean(domain=domain, token=token)
 
 def query_code_ocean_metadata():
     """
     Query Code Ocean API for metadata about the analysis
     """
-    # Get the Code Ocean domain and API token from environment variables
-    domain = os.getenv("CODEOCEAN_DOMAIN")
-    token = os.getenv("CODEOCEAN_API_TOKEN")
+    # Initialize the Code Ocean client and get computation ID
+    client = _initialize_codeocean_client()
     computation_id = os.getenv("CO_COMPUTATION_ID")
-    
-    if not all([domain, token, computation_id]):
-        raise ValueError("Warning: Missing required Code Ocean environment variables")
-    
-    # Initialize the Code Ocean client
-    client = CodeOcean(domain=domain, token=token)
     
     # Get the current computation details
     computation = client.computations.get_computation(computation_id)
@@ -137,7 +147,7 @@ def query_code_ocean_metadata():
     
     if computation.data_assets:
         code.input_data = [
-            ps.DataAsset(url=get_data_asset_url(client, asset.id))
+            DataAsset(url=get_data_asset_url(client, asset.id))
             for asset in computation.data_assets
         ]
 

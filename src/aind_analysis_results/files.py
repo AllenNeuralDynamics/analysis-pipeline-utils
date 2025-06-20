@@ -1,9 +1,9 @@
 
 
 import hashlib
-import json
 
 import aind_data_schema.core.processing as ps
+from aind_data_schema.core.metadata import Metadata
 import fsspec
 
 
@@ -20,11 +20,14 @@ def copy_results_to_s3(process: ps.DataProcess, s3_bucket: str, results_path="/r
         raise Exception(f"S3 path {s3_url} already exists.")
 
     fs.put(results_path, s3_url, recursive=True)
-        
-    process.output_path = s3_url
 
-    # TODO - should metadata include Processing and DataDescription? DataProcess.output_path is supposed to be relative
-    return process
+    md = Metadata(
+        processing=ps.Processing(data_processes=[process]),
+        # TODO: name matching prefix or something else? 
+        name=s3_prefix,
+        location=s3_url,
+    )  
+    return md
 
 
 def _processing_prefix(process: ps.DataProcess) -> str:

@@ -21,61 +21,38 @@ from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
 
 PARAM_PREFIX = "param_"
+CODEOCEAN_DOMAIN = os.getenv("CODEOCEAN_DOMAIN", "https://codecean.alleninstitute.org")
 
-def extract_parameters(
-    computation: Computation,
-    capsule_id: Optional[str] = None
-) -> Dict[str, Any]:
-    """Extract and combine parameters from various sources in the computation.
-    
-    Args:
-        computation: The computation object containing parameters
-        capsule_id: Optional capsule ID to filter process-specific parameters
-    
-    Returns:
-        Dict[str, Any]: Combined parameters from all sources
-    """
-    parameters = {}
-    
-    # Extract ordered parameters
-    if computation.parameters:
-        ordered_params = {
-            f"{PARAM_PREFIX}{i}": param 
-            for i, param in enumerate(computation.parameters)
-            if param
-        }
-        parameters.update(ordered_params)
 
-    # Extract capsule-specific parameters if capsule ID provided
-    if capsule_id and computation.processes:
-        process_params = _get_capsule_parameters(computation.processes, capsule_id)
-        parameters.update(process_params)
-    
-    return parameters
-
-def _get_capsule_parameters(
+def _find_component_process(
     processes: List[PipelineProcess],
     capsule_id: str
-) -> Dict[str, Any]:
-    """Extract parameters for a specific capsule from computation processes.
+) -> Optional[PipelineProcess]:
+    """Find a specific capsule process in the list of computation processes.
     
     Args:
         processes: List of computation processes
-        capsule_id: Target capsule ID to filter parameters
+        capsule_id: Target capsule ID to filter
+    """
+    for process in processes:
+        if process.capsule_id == capsule_id:
+            return process
+    return None
+    
+def _extract_parameters(process: PipelineProcess | Computation) -> Dict[str, Any]:
+    """Extract parameters for a specific capsule from computation processes.
+    
+    Args:
+        process: PipelineProcess or Computation object containing parameters
         
     Returns:
         Dict[str, Any]: Parameters specific to the target capsule
     """
-    if processes is None:
-        return {}
-    for process in processes:
-        if process.capsule_id == capsule_id:
-            return {
-                param.name if param.name else f"{PARAM_PREFIX}{i}": param.value
-                for i, param in enumerate(process.parameters)
-                if param.value
-            }
-    return {}
+    return {
+        param.name if param.name else f"{PARAM_PREFIX}{i}": param.value
+        for i, param in enumerate(process.parameters)
+        if param.value
+    }
 
 def construct_processing_record(
     analysis_job_dict: Dict[str, Any],
@@ -123,7 +100,7 @@ def _initialize_codeocean_client() -> CodeOcean:
     
     return CodeOcean(domain=domain, token=token)
 
-def query_code_ocean_metadata():
+def query_code_ocean_metadata(capsule_id: Optional[str] = None) -> ps.DataProcess:
     """
     Query Code Ocean API for metadata about the analysis
     """
@@ -150,11 +127,15 @@ def query_code_ocean_metadata():
     process.experimenters = [ps.Person(name=pipeline.owner)]
     process.name = pipeline.name
 
-    # Extract parameters using the new helper function
-    parameters = extract_parameters(
-        computation,
-        capsule_id=os.getenv("CO_CAPSULE_ID")
-    )
+    parameters = _extract_parameters(computation)
+    # try to find parameters for either the specified or the current capsule
+    capsule_id = capsule_id or os.getenv("CO_CAPSULE_ID")
+    if capsule_id:
+        # If capsule_id is provided, extract parameters for that specific capsule
+        component_process = _find_component_process(computation.processes, capsule_id)
+        if component_process:
+            parameters.update(_extract_parameters(component_process))
+
     code = get_code_metadata_from_git()
     code.parameters = parameters
     
@@ -201,6 +182,26 @@ def get_code_metadata_from_git() -> ps.Code:
     # Get repo name from remote URL instead of shell command
     repo_name = git_remote_url.split("/")[-1].replace(".git", "") if git_remote_url else ""
 
+    code = ps.Code(
+        # git remote URL from shell command
+        url=git_remote_url,
+        version=git_commit_hash,
+        run_script="code/run",
+        name=repo_name,
+    )
+    return code
+
+def get_code_metadata_from_git_remote(capsule_id: str) -> ps.Code:
+    """Get git metadata for a specific capsule from the remote repository.
+    
+    Args:
+        capsule_id: ID of the capsule to retrieve metadata for.
+        
+    Returns:
+        ps.Code: Code object with git metadata
+    """
+    # Use the capsule ID to get the relevant git information
+    git_remote_url = f"{CODEOCEAN_DOMAIN}/capsule-{capsule_id}.git"
     code = ps.Code(
         # git remote URL from shell command
         url=git_remote_url,

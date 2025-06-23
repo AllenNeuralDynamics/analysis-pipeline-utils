@@ -4,9 +4,10 @@ from datetime import datetime
 import os
 import aind_data_schema.core.processing as ps
 from aind_data_schema.components.identifiers import DataAsset
+from codeocean.computation import Computation, Param, ComputationState
 from aind_analysis_results.metadata import (
     extract_parameters,
-    _get_capsule_parameters,
+    _extract_parameters,
     construct_processing_record,
     _initialize_codeocean_client,
     get_code_metadata_from_git,
@@ -19,15 +20,17 @@ from aind_analysis_results.metadata import (
 # Fixtures for common test data
 @pytest.fixture
 def mock_computation():
-    computation = Mock()
-    computation.parameters = ["param1", "param2"]
-    computation.named_parameters = [
-        Mock(param_name="named1", value="value1"),
-        Mock(param_name="named2", value="value2")
-    ]
-    computation.created = 1622764800  # Example timestamp
-    computation.run_time = 3600
-    computation.capsule_id = "test_capsule_id"
+    computation = Computation(
+        id="test_computation_id",
+        parameters=[
+            Param(name="param1", value="value1"),
+            Param(name="param2", value="value2")
+        ],
+        created=1622764800,
+        run_time=3600,
+        name="test_capsule",
+        state=ComputationState.Running
+    )
     return computation
 
 @pytest.fixture
@@ -58,10 +61,8 @@ def mock_code_ocean_client():
 def test_extract_parameters_with_ordered_params(mock_computation):
     result = extract_parameters(mock_computation)
     assert result == {
-        "param_0": "param1",
-        "param_1": "param2",
-        "named1": "value1",
-        "named2": "value2"
+        "param1": "value1",
+        "param2": "value2"
     }
 
 def test_extract_parameters_with_capsule_id(mock_computation, mock_pipeline_process):
@@ -78,7 +79,7 @@ def test_extract_parameters_with_capsule_id(mock_computation, mock_pipeline_proc
 
 # Test _get_capsule_parameters function
 def test_get_capsule_parameters_matching_capsule(mock_pipeline_process):
-    result = _get_capsule_parameters(mock_pipeline_process, "test_capsule_id")
+    result = _extract_parameters(mock_pipeline_process, "test_capsule_id")
     assert result == {
         "process1": "value1",
         "param_1": "value2"
@@ -86,7 +87,7 @@ def test_get_capsule_parameters_matching_capsule(mock_pipeline_process):
 
 def test_get_capsule_parameters_no_match():
     processes = [Mock(capsule_id="different_id", parameters=[])]
-    result = _get_capsule_parameters(processes, "test_capsule_id")
+    result = _extract_parameters(processes, "test_capsule_id")
     assert result == {}
 
 # Test construct_processing_record function

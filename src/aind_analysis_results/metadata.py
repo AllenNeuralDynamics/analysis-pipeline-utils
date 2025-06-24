@@ -83,8 +83,8 @@ def _initialize_codeocean_client() -> CodeOcean:
     
     if not all([domain, token]):
         raise ValueError("Warning: Missing required Code Ocean environment variables")
-    
-    return CodeOcean(domain=domain, token=token)
+
+    return CodeOcean(domain=f"https://{domain}", token=token)
 
 def query_code_ocean_metadata(capsule_id: Optional[str] = None) -> ps.DataProcess:
     """

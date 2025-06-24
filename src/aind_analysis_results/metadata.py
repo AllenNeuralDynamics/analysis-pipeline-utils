@@ -183,6 +183,26 @@ def get_code_metadata_from_git() -> ps.Code:
     )
     return code
 
+
+def _get_git_remote_url() -> str:
+    """Get the git remote URL for the current repository.
+    
+    Returns:
+        str: Remote URL of the git repository
+    """
+    # these variables are set in pipelines only
+    credentials = os.getenv("GIT_ACCESS_TOKEN")
+    domain = os.getenv("GIT_HOST")
+    if not credentials:
+        try:
+            username = os.getenv("CODEOCEAN_EMAIL") or _run_git_command(["git", "config", "user.email"]).replace("@","%40")
+            token = os.getenv("CODEOCEAN_API_TOKEN")
+            credentials = f"{username}:{token}"
+            domain = os.getenv("CODEOCEAN_DOMAIN").replace("https://","")[:-1]
+        except Exception as e:
+            raise ValueError("GIT_ACCESS_TOKEN or CODEOCEAN_API_TOKEN environment variable is required")
+    return f"https://{credentials}@{domain}"
+
 def get_version_from_git_remote(capsule_slug: str) -> str:
     """Get the git version for a specific capsule from the remote repository.
 
@@ -192,10 +212,8 @@ def get_version_from_git_remote(capsule_slug: str) -> str:
     Returns:
         str: Commit hash of the HEAD of the capsule's git repository
     """
-    username = _run_git_command(["git", "config", "user.email"]).replace("@","%40")
-    domain = os.getenv("CODEOCEAN_DOMAIN").replace("https://","")
-    token = os.getenv("CODEOCEAN_API_TOKEN")
-    git_remote_url = f"https://{username}:{token}@{domain}capsule-{capsule_slug}.git"
+
+    git_remote_url = f"{_get_git_remote_url()}/capsule-{capsule_slug}.git"
     git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, "HEAD"])
     if not git_commit_hash:
         raise ValueError(f"Could not retrieve git commit hash for capsule {capsule_slug}")

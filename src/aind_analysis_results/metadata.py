@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import os
 import subprocess
+import uuid
 import aind_data_schema.core.processing as ps
 from aind_data_schema.core.metadata import Metadata
 from aind_data_schema.components.identifiers import DataAsset
@@ -248,7 +249,9 @@ def write_to_docdb(metadata: Metadata):
     Write the processing record to the document database
     """
     client = get_docdb_client()
-    response = client.insert_one_docdb_record(metadata.model_dump(mode="json"))
+    metadata_dump = metadata.model_dump(mode="json")
+    metadata_dump["_id"] = uuid.uuid4().hex  # Ensure a unique ID for the record
+    response = client.insert_one_docdb_record(metadata_dump)
     return response
 
 

@@ -33,6 +33,8 @@ def extract_parameters(process: PipelineProcess | Computation) -> Dict[str, Any]
     Returns:
         Dict[str, Any]: Parameters specific to the target capsule
     """
+    if not process.parameters:
+        return {}
     return {
         param.name if param.name else f"{PARAM_PREFIX}{i}": param.value
         for i, param in enumerate(process.parameters)

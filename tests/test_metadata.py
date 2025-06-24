@@ -7,7 +7,6 @@ from aind_data_schema.components.identifiers import DataAsset
 from codeocean.computation import Computation, Param, ComputationState
 from aind_analysis_results.metadata import (
     extract_parameters,
-    _extract_parameters,
     construct_processing_record,
     _initialize_codeocean_client,
     get_code_metadata_from_git,
@@ -64,31 +63,6 @@ def test_extract_parameters_with_ordered_params(mock_computation):
         "param1": "value1",
         "param2": "value2"
     }
-
-def test_extract_parameters_with_capsule_id(mock_computation, mock_pipeline_process):
-    mock_computation.processes = mock_pipeline_process
-    result = extract_parameters(mock_computation, "test_capsule_id")
-    assert result == {
-        "param_0": "param1",
-        "param_1": "param2",
-        "named1": "value1",
-        "named2": "value2",
-        "process1": "value1",
-        "param_1": "value2"  # Note: This would override the earlier param_1
-    }
-
-# Test _get_capsule_parameters function
-def test_get_capsule_parameters_matching_capsule(mock_pipeline_process):
-    result = _extract_parameters(mock_pipeline_process, "test_capsule_id")
-    assert result == {
-        "process1": "value1",
-        "param_1": "value2"
-    }
-
-def test_get_capsule_parameters_no_match():
-    processes = [Mock(capsule_id="different_id", parameters=[])]
-    result = _extract_parameters(processes, "test_capsule_id")
-    assert result == {}
 
 # Test construct_processing_record function
 @patch('aind_analysis_results.metadata.query_code_ocean_metadata')

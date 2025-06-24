@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import os
 import subprocess
-import uuid
 import aind_data_schema.core.processing as ps
 from aind_data_schema.core.metadata import Metadata
 from aind_data_schema.components.identifiers import DataAsset
@@ -24,22 +23,8 @@ PARAM_PREFIX = "param_"
 CODEOCEAN_DOMAIN = os.getenv("CODEOCEAN_DOMAIN", "https://codecean.alleninstitute.org")
 
 
-def _find_component_process(
-    processes: List[PipelineProcess],
-    capsule_id: str
-) -> Optional[PipelineProcess]:
-    """Find a specific capsule process in the list of computation processes.
     
-    Args:
-        processes: List of computation processes
-        capsule_id: Target capsule ID to filter
-    """
-    for process in processes:
-        if process.capsule_id == capsule_id:
-            return process
-    return None
-    
-def _extract_parameters(process: PipelineProcess | Computation) -> Dict[str, Any]:
+def extract_parameters(process: PipelineProcess | Computation) -> Dict[str, Any]:
     """Extract parameters for a specific capsule from computation processes.
     
     Args:
@@ -77,9 +62,9 @@ def construct_processing_record(
     else:
         process.code.input_data.append(DataAsset(url=analysis_job_dict["s3_location"]))
         
-    process.code.parameters.update(analysis_job_dict["parameters"])
-    # add any other metadata from user
-    process.code.parameters.update(**kwargs)
+    process.code.parameters = process.code.parameters.model_copy(update=dict(
+        **analysis_job_dict["parameters"], **kwargs
+    ))
 
     return process
 
@@ -102,7 +87,8 @@ def _initialize_codeocean_client() -> CodeOcean:
 
 def query_code_ocean_metadata(capsule_id: Optional[str] = None) -> ps.DataProcess:
     """
-    Query Code Ocean API for metadata about the analysis
+    Query Code Ocean API for metadata about the current analysis pipeline or capsule run.
+
     """
     # Initialize the Code Ocean client and get computation ID
     client = _initialize_codeocean_client()
@@ -127,23 +113,25 @@ def query_code_ocean_metadata(capsule_id: Optional[str] = None) -> ps.DataProces
     process.experimenters = [ps.Person(name=pipeline.owner)]
     process.name = pipeline.name
 
-    parameters = _extract_parameters(computation)
-    # try to find parameters for either the specified or the current capsule
+    parameters = extract_parameters(computation)
+    # find the component process for this capsule or specified capsule ID
     capsule_id = capsule_id or os.getenv("CO_CAPSULE_ID")
-    if capsule_id:
-        # If capsule_id is provided, extract parameters for that specific capsule
-        component_process = _find_component_process(computation.processes, capsule_id)
-        if component_process:
-            parameters.update(_extract_parameters(component_process))
-
-    code = get_code_metadata_from_git()
-    code.parameters = parameters
-    
-    if computation.data_assets:
-        code.input_data = [
+    if not capsule_id:
+        raise ValueError("Capsule ID must be provided or set in environment variable CO_CAPSULE_ID")
+    component_process = next(proc for proc in computation.processes if proc.capsule_id == capsule_id)
+    parameters.update(extract_parameters(component_process))
+    capsule = client.capsules.get_capsule(capsule_id)
+    code = ps.Code(
+        url=capsule.cloned_from_url or "",
+        name=capsule.name or "",
+        version=str(component_process.version) or get_version_from_git_remote(capsule.slug),
+        run_script="code/run",
+        parameters=parameters,
+        input_data = [
             DataAsset(get_data_asset_url(client, asset.id))
             for asset in computation.data_assets
         ]
+    )
 
     process.code = code
     return process
@@ -191,25 +179,20 @@ def get_code_metadata_from_git() -> ps.Code:
     )
     return code
 
-def get_code_metadata_from_git_remote(capsule_id: str) -> ps.Code:
-    """Get git metadata for a specific capsule from the remote repository.
-    
+def get_version_from_git_remote(capsule_slug: str) -> str:
+    """Get the git version for a specific capsule from the remote repository.
+
     Args:
-        capsule_id: ID of the capsule to retrieve metadata for.
-        
+        capsule_slug: Slug ID of the capsule to retrieve metadata for (7-digit numeric ID)
+
     Returns:
-        ps.Code: Code object with git metadata
+        str: Commit hash of the HEAD of the capsule's git repository
     """
-    # Use the capsule ID to get the relevant git information
-    git_remote_url = f"{CODEOCEAN_DOMAIN}/capsule-{capsule_id}.git"
-    code = ps.Code(
-        # git remote URL from shell command
-        url=git_remote_url,
-        version=git_commit_hash,
-        run_script="code/run",
-        name=repo_name,
-    )
-    return code
+    git_remote_url = f"\$CODEOCEAN_API_TOKEN@{CODEOCEAN_DOMAIN}/capsule-{capsule_slug}.git"
+    git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, "HEAD"])
+    if not git_commit_hash:
+        raise ValueError(f"Could not retrieve git commit hash for capsule {capsule_slug}")
+    return git_commit_hash.split()[0]  # Return the commit hash part
 
 
 def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
@@ -257,8 +240,6 @@ def get_docdb_record(processing: ps.DataProcess):
     Get the document database record for the given processing object
     """
     client: MetadataDbClient = get_docdb_client()
-    processing_code_dict = processing.code.model_dump()
-    processing_code_dict["run_script"] = processing_code_dict["run_script"].as_posix()
     
     responses = client.retrieve_docdb_records(
         filter_query={"processing.data_processes[0].code": processing.code.model_dump_json()},

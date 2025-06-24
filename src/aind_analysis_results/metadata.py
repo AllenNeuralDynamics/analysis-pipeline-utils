@@ -195,7 +195,8 @@ def _get_git_remote_url() -> str:
     domain = os.getenv("GIT_HOST")
     if not credentials:
         try:
-            username = os.getenv("CODEOCEAN_EMAIL") or _run_git_command(["git", "config", "user.email"]).replace("@","%40")
+            username = os.getenv("CODEOCEAN_EMAIL") or _run_git_command(["git", "config", "user.email"])
+            username = username.replace("@","%40")
             token = os.getenv("CODEOCEAN_API_TOKEN")
             credentials = f"{username}:{token}"
             domain = os.getenv("CODEOCEAN_DOMAIN")

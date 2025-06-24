@@ -58,7 +58,7 @@ def construct_processing_record(
     process = query_code_ocean_metadata()
     # add s3_location and parameters from analysis_job_dict
 
-    new_inputs = [DataAsset(url=url) for url in analysis_inputs.s3_location]
+    new_inputs = [DataAsset(url=url) for url in dispatch_inputs.s3_location]
     if process.code.input_data is None:
         process.code.input_data = new_inputs
     else:

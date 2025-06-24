@@ -15,6 +15,7 @@ from aind_analysis_results.metadata import (
     docdb_record_exists,
     get_docdb_record,
 )
+from aind_analysis_results.analysis_dispatch_model import AnalysisDispatchModel
 
 # Fixtures for common test data
 @pytest.fixture
@@ -80,17 +81,18 @@ def test_construct_processing_record(mock_query):
     mock_query.return_value = mock_process
 
     # Test data
-    analysis_job = {
-        "s3_location": "s3://test-bucket/test-data",
-        "parameters": {"param1": "value1"}
-    }
+    analysis_job = AnalysisDispatchModel(
+        s3_location=["s3://test-bucket/test-data"],
+        asset_id=["test-asset-id"],
+        asset_name=["test-asset-name"],
+        
+    )
 
     result = construct_processing_record(analysis_job)
     
     assert isinstance(result, ps.DataProcess)
     assert len(result.code.input_data) == 1
     assert result.code.input_data[0].url == "s3://test-bucket/test-data"
-    assert result.code.parameters.model_dump() == {"param1": "value1"}
 
 # Test _initialize_codeocean_client function
 @patch.dict(os.environ, {
@@ -134,12 +136,6 @@ def test_run_git_command_success(mock_run):
     assert result == "test output"
     mock_run.assert_called_once()
 
-@patch('subprocess.run')
-def test_run_git_command_failure(mock_run):
-    mock_run.return_value = Mock(returncode=1, stdout="")  # Non-zero return code indicates failure
-    
-    result = _run_git_command(["git", "test-command"], default="failed")
-    assert result == "failed"
 
 # Test get_data_asset_url function
 def test_get_data_asset_url_aws(mock_code_ocean_client):

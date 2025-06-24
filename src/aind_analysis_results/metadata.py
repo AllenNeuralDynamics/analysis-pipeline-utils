@@ -1,10 +1,9 @@
 """
 suggested process for analysis wrapper capsule:
-    processing = construct_processing_record(user_input)
-    if check_docdb_for_record(processing):
+    process = construct_processing_record(dispatch_inputs)
+    if not docdb_record_exists(process):
     ... run processing
-    processing_complete = copy_results_to_s3(processing, s3_bucket)
-    write_to_docdb(processing_complete)
+    write_results_and_metadata(process, ANALYSIS_BUCKET)
 """
 
 from datetime import datetime
@@ -18,6 +17,8 @@ from aind_data_access_api.document_db import MetadataDbClient
 from aind_data_schema.components.identifiers import DataAsset
 from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
+from .analysis_dispatch_model import AnalysisDispatchModel
+from .result_files import create_results_metadata, copy_results_to_s3
 
 PARAM_PREFIX = "param_"
 
@@ -41,16 +42,15 @@ def extract_parameters(process: PipelineProcess | Computation) -> Dict[str, Any]
     }
 
 def construct_processing_record(
-    analysis_job_dict: Dict[str, Any],
+    dispatch_inputs: AnalysisDispatchModel,
     **kwargs,
 ) -> ps.DataProcess:
     """Construct a processing record by combining Code Ocean metadata with analysis job data.
     
     Args:
-        analysis_job_dict: Dictionary containing analysis metadata including:
+        dispatch_inputs: AnalysisDispatchModel containing analysis metadata including:
             - s3_location (str): S3 URL for input data
-            - parameters (Dict[str, Any]): Analysis parameters to update
-        **kwargs: Additional metadata to update on the process
+        **kwargs: Additional parameters passed to the process
         
     Returns:
         ps.DataProcess: Constructed processing record with combined metadata
@@ -58,14 +58,14 @@ def construct_processing_record(
     process = query_code_ocean_metadata()
     # add s3_location and parameters from analysis_job_dict
 
+    new_inputs = [DataAsset(url=url) for url in analysis_inputs.s3_location]
     if process.code.input_data is None:
-        process.code.input_data = [DataAsset(url=analysis_job_dict["s3_location"])]
+        process.code.input_data = new_inputs
     else:
-        process.code.input_data.append(DataAsset(url=analysis_job_dict["s3_location"]))
-        
-    process.code.parameters = process.code.parameters.model_copy(update=dict(
-        **analysis_job_dict["parameters"], **kwargs
-    ))
+        process.code.input_data.extend(new_inputs)
+
+    # TODO: allow additional parameters from the dispatch also?
+    process.code.parameters = process.code.parameters.model_copy(update=kwargs)
 
     return process
 
@@ -277,3 +277,9 @@ def get_docdb_client(host=None, database=None, collection=None) -> MetadataDbCli
         collection=collection,
     )
     return client
+
+
+def write_results_and_metadata(process: ps.DataProcess, s3_bucket: str):
+    metadata = create_results_metadata(process, s3_bucket)
+    copy_results_to_s3(metadata)
+    write_to_docdb(metadata)

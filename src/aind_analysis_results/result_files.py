@@ -7,6 +7,7 @@ from aind_data_schema.core.metadata import Metadata
 import fsspec
 
 
+
 def copy_results_to_s3(metadata: Metadata, results_path="/results"):
     """
     Copy results from a local path to an S3 bucket.

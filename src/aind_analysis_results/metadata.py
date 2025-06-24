@@ -20,7 +20,6 @@ from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
 
 PARAM_PREFIX = "param_"
-CODEOCEAN_DOMAIN = os.getenv("CODEOCEAN_DOMAIN", "https://codecean.alleninstitute.org")
 
 
     
@@ -112,6 +111,7 @@ def query_code_ocean_metadata(capsule_id: Optional[str] = None) -> ps.DataProces
     # not sure if this is the best way to get this info
     # but not recorded in computation object?
     pipeline = client.capsules.get_capsule(os.getenv("CO_PIPELINE_ID") or os.getenv("CO_CAPSULE_ID"))
+    # TODO: this owner attribute is just a CO UUID
     process.experimenters = [ps.Person(name=pipeline.owner)]
     process.name = pipeline.name
 
@@ -120,44 +120,46 @@ def query_code_ocean_metadata(capsule_id: Optional[str] = None) -> ps.DataProces
     capsule_id = capsule_id or os.getenv("CO_CAPSULE_ID")
     if not capsule_id:
         raise ValueError("Capsule ID must be provided or set in environment variable CO_CAPSULE_ID")
-    component_process = next(proc for proc in computation.processes if proc.capsule_id == capsule_id)
-    parameters.update(extract_parameters(component_process))
+    if computation.processes:
+        component_process = next(proc for proc in computation.processes if proc.capsule_id == capsule_id)
+        parameters.update(extract_parameters(component_process))
+        # version = str(component_process.version)
     capsule = client.capsules.get_capsule(capsule_id)
-    code = ps.Code(
-        url=capsule.cloned_from_url or "",
-        name=capsule.name or "",
-        version=str(component_process.version) or get_version_from_git_remote(capsule.slug),
-        run_script="code/run",
-        parameters=parameters,
+    if computation.data_assets:
         input_data = [
             DataAsset(get_data_asset_url(client, asset.id))
             for asset in computation.data_assets
         ]
+    else:
+        input_data = []
+    code = ps.Code(
+        url=capsule.cloned_from_url or "",
+        name=capsule.name or "",
+        version= get_version_from_git_remote(capsule.slug),
+        run_script="code/run",
+        parameters=parameters,
+        input_data=input_data
     )
 
     process.code = code
     return process
 
-def _run_git_command(command: List[str], default: str = "") -> str:
+def _run_git_command(command: List[str]) -> str:
     """Run a git command safely and return its output.
     
     Args:
         command: List of command arguments
-        default: Default value to return if command fails
         
     Returns:
         str: Command output or default value if command fails
     """
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False  # Don't raise on non-zero exit
-        )
-        return result.stdout.strip() if result.returncode == 0 else default
-    except subprocess.SubprocessError:
-        return default
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    return result.stdout.strip() 
 
 def get_code_metadata_from_git() -> ps.Code:
     """Get git metadata for the current repository.
@@ -190,7 +192,10 @@ def get_version_from_git_remote(capsule_slug: str) -> str:
     Returns:
         str: Commit hash of the HEAD of the capsule's git repository
     """
-    git_remote_url = f"\$CODEOCEAN_API_TOKEN@{CODEOCEAN_DOMAIN}/capsule-{capsule_slug}.git"
+    username = _run_git_command(["git", "config", "user.email"]).replace("@","%40")
+    domain = os.getenv("CODEOCEAN_DOMAIN").replace("https://","")
+    token = os.getenv("CODEOCEAN_API_TOKEN")
+    git_remote_url = f"https://{username}:{token}@{domain}capsule-{capsule_slug}.git"
     git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, "HEAD"])
     if not git_commit_hash:
         raise ValueError(f"Could not retrieve git commit hash for capsule {capsule_slug}")

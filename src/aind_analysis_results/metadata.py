@@ -198,7 +198,7 @@ def _get_git_remote_url() -> str:
             username = os.getenv("CODEOCEAN_EMAIL") or _run_git_command(["git", "config", "user.email"]).replace("@","%40")
             token = os.getenv("CODEOCEAN_API_TOKEN")
             credentials = f"{username}:{token}"
-            domain = os.getenv("CODEOCEAN_DOMAIN").replace("https://","")[:-1]
+            domain = os.getenv("CODEOCEAN_DOMAIN")
         except Exception as e:
             raise ValueError("GIT_ACCESS_TOKEN or CODEOCEAN_API_TOKEN environment variable is required")
     return f"https://{credentials}@{domain}"

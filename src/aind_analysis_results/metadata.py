@@ -248,7 +248,7 @@ def write_to_docdb(metadata: Metadata):
     Write the processing record to the document database
     """
     client = get_docdb_client()
-    response = client.insert_one_docdb_record(metadata.model_dump_json())
+    response = client.insert_one_docdb_record(metadata.model_dump(mode="json"))
     return response
 
 

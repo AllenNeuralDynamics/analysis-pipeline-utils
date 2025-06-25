@@ -303,5 +303,7 @@ def get_docdb_client(host=None, database=None, collection=None) -> MetadataDbCli
 
 def write_results_and_metadata(process: ps.DataProcess, s3_bucket: str):
     metadata = create_results_metadata(process, s3_bucket)
+    with open("/results/metadata.nd.json", "w") as f:
+        f.write(metadata.model_dump_json(indent=2))
     copy_results_to_s3(metadata)
     write_to_docdb(metadata)

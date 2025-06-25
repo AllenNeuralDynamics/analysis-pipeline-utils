@@ -1,11 +1,28 @@
 
 
 import hashlib
+from typing import Dict
 
 import aind_data_schema.core.processing as ps
 from aind_data_schema.core.metadata import Metadata
 import fsspec
 
+
+def list_results_files(metadata: Dict | Metadata) -> list[str]:
+    """
+    List all results files for a given processing job in an S3 bucket.
+
+    Args:
+        metadata: Metadata object or dictionary containing the analysis record
+
+    Returns:
+        List of result file paths on s3.
+    """
+    if not isinstance(metadata, dict):
+        metadata = metadata.model_dump()
+    s3_url = metadata["location"]
+    fs = fsspec.filesystem('s3')
+    return fs.glob(f"{s3_url}/**/*")
 
 
 def copy_results_to_s3(metadata: Metadata, results_path="/results"):

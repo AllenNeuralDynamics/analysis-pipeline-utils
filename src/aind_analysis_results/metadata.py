@@ -15,7 +15,7 @@ import aind_data_schema.core.processing as ps
 from aind_data_schema.core.metadata import Metadata
 from aind_data_schema.components.identifiers import DataAsset
 from aind_data_access_api.document_db import MetadataDbClient
-from aind_data_schema.components.identifiers import DataAsset
+from aind_data_schema.components.identifiers import DataAsset, CombinedData
 from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
 from .analysis_dispatch_model import AnalysisDispatchModel
@@ -259,28 +259,73 @@ def docdb_record_exists(processing: ps.DataProcess):
     """
     Check the document database for whether a record already exists matching the analysis metadata
     """
-    if get_docdb_record(processing):
-        return True
-    return False
-
-
-def get_docdb_record(processing: ps.DataProcess):
-    """
-    Get the document database record for the given processing object
-    """
-    client: MetadataDbClient = get_docdb_client()
+    responses = get_docdb_records(processing.code)
     
-    responses = client.retrieve_docdb_records(
-        filter_query={"processing.data_processes.0.code": processing.code.model_dump(mode="json")},
-    )
     if len(responses) == 1:
-        return responses[0]
+        return True
     elif len(responses) > 1:
         raise ValueError(
             "Multiple records found in document database. This indicates a potential data integrity issue."
         )
     else:
-        return None
+        return False
+
+
+def get_docdb_records(code: ps.Code) -> List[Dict[str, Any]]:
+    """
+    Get the document database record for the given processing code object
+    """
+    client: MetadataDbClient = get_docdb_client()
+    
+    code_dict = code.model_dump(mode="json")
+    filter_query = {"processing.data_processes.0.code": code_dict}
+    
+    responses = client.retrieve_docdb_records(filter_query=filter_query)
+    return responses
+
+
+def get_docdb_records_partial(
+    latest_only=False,
+    code_url: Optional[str] = None,
+    code_version: Optional[str] = None,
+    input_data_locations: Optional[List[str]] = None,
+    input_data: Optional[List[DataAsset | CombinedData]] = None,
+    parameters: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Get the document database record matching specified properties
+    """
+    client: MetadataDbClient = get_docdb_client()
+
+    if input_data_locations:
+        input_data = [DataAsset(url=url) for url in input_data_locations]
+    input_data_dict = [asset.model_dump(mode="json") for asset in input_data] if input_data else None
+
+    code_prefix = "processing.data_processes.0.code"
+    filter_query={}
+    if code_url:
+        filter_query[f"{code_prefix}.url"] = code_url
+    if code_version:
+        filter_query[f"{code_prefix}.version"] = code_version
+    if input_data_dict:
+        filter_query[f"{code_prefix}.input_data"] = {"$all": input_data_dict}
+    if parameters:
+        filter_query[f"{code_prefix}.parameters"] = parameters
+    if latest_only:
+        pipeline = [
+            {"$match": filter_query},
+            {'$sort': {'created': -1}}, 
+            {"$group": {
+                "_id": "$processing.data_processes.0.code", 
+                "latest_record": { "$first": "$$ROOT" } 
+            }},
+            {"$replaceRoot": {"newRoot": "$latest_record"}}
+        ]
+        responses = client.aggregate_docdb_records(pipeline=pipeline)
+    else:
+        responses = client.retrieve_docdb_records(filter_query=filter_query)
+    return responses
+
 
 
 def get_docdb_client(host=None, database=None, collection=None) -> MetadataDbClient:

@@ -50,10 +50,9 @@ def create_results_metadata(process: ps.DataProcess, s3_bucket: str) -> Metadata
 def _processing_prefix(process: ps.DataProcess) -> str:
     """
     Generate a unique ID for the processing based on its metadata.
+    This includes a timestamp, so it will change with each run.
     """
-
-    # Convert the process metadata to a JSON string
-    process_metadata = str(process).encode('utf-8')
+    # TODO: should this ignore some fields? use process.code only?
+    process_metadata = process.model_dump_json().encode('utf-8')
     
-    # Create a hash of the metadata
     return hashlib.sha256(process_metadata).hexdigest()

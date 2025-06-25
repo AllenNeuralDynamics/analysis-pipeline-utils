@@ -271,7 +271,7 @@ def get_docdb_record(processing: ps.DataProcess):
     client: MetadataDbClient = get_docdb_client()
     
     responses = client.retrieve_docdb_records(
-        filter_query={"processing.data_processes[0].code": processing.code.model_dump_json()},
+        filter_query={"processing.data_processes.0.code": processing.code.model_dump(mode="json")},
     )
     if len(responses) == 1:
         return responses[0]

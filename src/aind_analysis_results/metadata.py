@@ -8,6 +8,7 @@ suggested process for analysis wrapper capsule:
 
 from datetime import datetime
 from typing import Dict, Any, Optional, List
+import logging
 import os
 import subprocess
 import uuid
@@ -194,7 +195,7 @@ def _get_git_remote_url() -> str:
     # these variables are set in pipelines only
     credentials = os.getenv("GIT_ACCESS_TOKEN")
     domain = os.getenv("GIT_HOST")
-    if not credentials:
+    if not all([credentials, domain]):
         try:
             username = os.getenv("CODEOCEAN_EMAIL") or _run_git_command(["git", "config", "user.email"])
             username = username.replace("@","%40")
@@ -264,9 +265,10 @@ def docdb_record_exists(processing: ps.DataProcess):
     if len(responses) == 1:
         return True
     elif len(responses) > 1:
-        raise ValueError(
+        logging.warning(
             "Multiple records found in document database. This indicates a potential data integrity issue."
         )
+        return True
     else:
         return False
 

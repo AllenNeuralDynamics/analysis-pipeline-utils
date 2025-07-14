@@ -34,8 +34,9 @@ class AnalysisDispatchModel(BaseModel):
         description="Full s3 path to specific file within the data asset.",
     )
 
-    analysis_parameters: Optional[Dict[str, Any]] = Field(
+    distributed_parameters: Optional[Dict[str, Any]] = Field(
         None,
-        title="Analysis parameters",
-        description="Analysis parameters used in dispatching",
+        title="Distributed parameters",
+        description="Distributed parameters used in dispatching. "
+        "Dictionary of parameters from distributed list when dispatching",
     )

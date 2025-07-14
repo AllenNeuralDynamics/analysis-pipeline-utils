@@ -37,5 +37,8 @@ class AnalysisDispatchModel(BaseModel):
     distributed_parameters: Optional[Dict[str, Any]] = Field(
         None,
         title="Distributed parameters",
-        description="Dictionary of parameters from distributed list"
+        description=(
+            "Dictionary of analysis parameters "
+            "distributed by the job dispatcher"
+        ),
     )

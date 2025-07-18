@@ -114,7 +114,7 @@ def query_code_ocean_metadata(capsule_id: Optional[str] = None) -> ps.DataProces
     # but not recorded in computation object?
     pipeline = client.capsules.get_capsule(os.getenv("CO_PIPELINE_ID") or os.getenv("CO_CAPSULE_ID"))
     # TODO: this owner attribute is just a CO UUID
-    process.experimenters = [ps.Person(name=pipeline.owner)]
+    process.experimenters = [pipeline.owner]
     process.name = pipeline.name
 
     parameters = extract_parameters(computation)

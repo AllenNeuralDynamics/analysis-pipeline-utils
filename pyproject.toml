@@ -25,13 +25,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    'pytest',
     'black',
     'coverage',
     'flake8',
     'interrogate',
     'isort',
-    'Sphinx',
-    'furo'
 ]
 
 [tool.setuptools.packages.find]
@@ -42,7 +41,6 @@ version = {attr = "aind_analysis_results.__version__"}
 
 [tool.black]
 line-length = 79
-target_version = ['py310']
 exclude = '''
 
 (

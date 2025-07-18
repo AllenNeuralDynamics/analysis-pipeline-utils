@@ -13,7 +13,7 @@ from aind_analysis_results.metadata import (
     get_data_asset_url,
     _run_git_command,
     docdb_record_exists,
-    get_docdb_record,
+    get_docdb_records,
 )
 from aind_analysis_results.analysis_dispatch_model import AnalysisDispatchModel
 
@@ -175,15 +175,6 @@ def test_get_docdb_record_single(mock_get_client):
     mock_get_client.return_value = mock_client
     
     processing = Mock()
-    result = get_docdb_record(processing)
-    assert result == "record"
+    result = get_docdb_records(processing)
+    assert result == ["record"]
 
-@patch('aind_analysis_results.metadata.get_docdb_client')
-def test_get_docdb_record_multiple(mock_get_client):
-    mock_client = Mock()
-    mock_client.retrieve_docdb_records.return_value = ["record1", "record2"]
-    mock_get_client.return_value = mock_client
-    
-    processing = Mock()
-    with pytest.raises(ValueError):
-        get_docdb_record(processing)

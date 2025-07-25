@@ -17,7 +17,7 @@ readme = "README.md"
 dynamic = ["version"]
 
 dependencies = [
-    'aind-data-schema @ git+https://github.com/AllenNeuralDynamics/aind-data-schema.git@release-v2.0.0',
+    'aind-data-schema @ git+https://github.com/AllenNeuralDynamics/aind-data-schema.git@dev',
     'aind-data-access-api',
     'codeocean',
     'fsspec[s3]'
@@ -25,13 +25,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    'pytest',
     'black',
     'coverage',
     'flake8',
     'interrogate',
     'isort',
-    'Sphinx',
-    'furo'
 ]
 
 [tool.setuptools.packages.find]
@@ -42,7 +41,6 @@ version = {attr = "aind_analysis_results.__version__"}
 
 [tool.black]
 line-length = 79
-target_version = ['py310']
 exclude = '''
 
 (

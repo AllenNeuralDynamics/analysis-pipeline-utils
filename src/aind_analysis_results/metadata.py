@@ -65,6 +65,10 @@ def construct_processing_record(
         process.code.input_data = new_inputs
     else:
         process.code.input_data.extend(new_inputs)
+    
+    # add file location as a tracked parameter
+    if dispatch_inputs.file_location:
+        kwargs.update(file_location=dispatch_inputs.file_location)
 
     # TODO: allow additional parameters from the dispatch also?
     process.code.parameters = process.code.parameters.model_copy(update=kwargs)

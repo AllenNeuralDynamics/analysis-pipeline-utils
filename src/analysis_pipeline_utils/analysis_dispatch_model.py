@@ -18,15 +18,6 @@ class AnalysisDispatchModel(BaseModel):
         description="S3 bucket path(s) used in analysis",
     )
 
-    asset_id: List[str] = Field(
-        ...,
-        title="asset ID",
-        description="Asset ID(s) associated with the bucket",
-    )
-
-    asset_name: List[str] = Field(
-        ..., title="asset name", description="Name(s) of the data asset(s)"
-    )
 
     file_location: Optional[List[str]] = Field(
         None,

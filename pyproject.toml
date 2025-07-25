@@ -3,7 +3,7 @@ requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aind-analysis-results"
+name = "analysis-pipeline-utils"
 description = "Generated from aind-library-template"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -37,7 +37,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.dynamic]
-version = {attr = "aind_analysis_results.__version__"}
+version = {attr = "analysis_pipeline_utils.__version__"}
 
 [tool.black]
 line-length = 79
@@ -61,7 +61,7 @@ exclude = '''
 
 [tool.coverage.run]
 omit = ["*__init__*"]
-source = ["aind_analysis_results", "tests"]
+source = ["analysis_pipeline_utils", "tests"]
 
 [tool.coverage.report]
 exclude_lines = [

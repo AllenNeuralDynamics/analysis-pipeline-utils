@@ -5,7 +5,7 @@ import os
 import aind_data_schema.core.processing as ps
 from aind_data_schema.components.identifiers import DataAsset
 from codeocean.computation import Computation, Param, ComputationState
-from aind_analysis_results.metadata import (
+from analysis_pipeline_utils.metadata import (
     extract_parameters,
     construct_processing_record,
     _initialize_codeocean_client,
@@ -15,7 +15,7 @@ from aind_analysis_results.metadata import (
     docdb_record_exists,
     get_docdb_records,
 )
-from aind_analysis_results.analysis_dispatch_model import AnalysisDispatchModel
+from analysis_pipeline_utils.analysis_dispatch_model import AnalysisDispatchModel
 
 # Fixtures for common test data
 @pytest.fixture
@@ -66,7 +66,7 @@ def test_extract_parameters_with_ordered_params(mock_computation):
     }
 
 # Test construct_processing_record function
-@patch('aind_analysis_results.metadata.query_code_ocean_metadata')
+@patch('analysis_pipeline_utils.metadata.query_code_ocean_metadata')
 def test_construct_processing_record(mock_query):
     # Setup mock process
     mock_process = ps.DataProcess.model_construct()
@@ -100,7 +100,7 @@ def test_construct_processing_record(mock_query):
     "CODEOCEAN_API_TOKEN": "test-token"
 })
 def test_initialize_codeocean_client_success():
-    with patch('aind_analysis_results.metadata.CodeOcean') as mock_co:
+    with patch('analysis_pipeline_utils.metadata.CodeOcean') as mock_co:
         client = _initialize_codeocean_client()
         mock_co.assert_called_once_with(domain="test-domain", token="test-token")
 
@@ -110,7 +110,7 @@ def test_initialize_codeocean_client_missing_env():
             _initialize_codeocean_client()
 
 # Test get_code_metadata_from_git function
-@patch('aind_analysis_results.metadata._run_git_command')
+@patch('analysis_pipeline_utils.metadata._run_git_command')
 def test_get_code_metadata_from_git(mock_run_git):
     mock_run_git.side_effect = [
         "https://github.com/org/test-repo.git",  # remote URL
@@ -150,7 +150,7 @@ def test_get_data_asset_url_non_aws(mock_code_ocean_client):
         get_data_asset_url(mock_code_ocean_client, "test-asset-id")
 
 # Test DocDB related functions
-@patch('aind_analysis_results.metadata.get_docdb_client')
+@patch('analysis_pipeline_utils.metadata.get_docdb_client')
 def test_docdb_record_exists_true(mock_get_client):
     mock_client = Mock()
     mock_client.retrieve_docdb_records.return_value = ["record"]
@@ -159,7 +159,7 @@ def test_docdb_record_exists_true(mock_get_client):
     processing = Mock()
     assert docdb_record_exists(processing) is True
 
-@patch('aind_analysis_results.metadata.get_docdb_client')
+@patch('analysis_pipeline_utils.metadata.get_docdb_client')
 def test_docdb_record_exists_false(mock_get_client):
     mock_client = Mock()
     mock_client.retrieve_docdb_records.return_value = []
@@ -168,7 +168,7 @@ def test_docdb_record_exists_false(mock_get_client):
     processing = Mock()
     assert docdb_record_exists(processing) is False
 
-@patch('aind_analysis_results.metadata.get_docdb_client')
+@patch('analysis_pipeline_utils.metadata.get_docdb_client')
 def test_get_docdb_record_single(mock_get_client):
     mock_client = Mock()
     mock_client.retrieve_docdb_records.return_value = ["record"]

@@ -1,7 +1,7 @@
 import pytest
 import hashlib
 from aind_data_schema.core.metadata import Metadata
-from aind_analysis_results.result_files import create_results_metadata, _processing_prefix
+from analysis_pipeline_utils.result_files import create_results_metadata, _processing_prefix
 
 import aind_data_schema.core.processing as ps
 

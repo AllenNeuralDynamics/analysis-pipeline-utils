@@ -1,3 +1,7 @@
+"""
+Functions that are called
+in the analysis wrapper
+"""
 import json
 import logging
 from collections import defaultdict
@@ -45,6 +49,9 @@ def make_cli_model(model_cls: Type[T]) -> Type[BaseSettings]:
     )
 
     class CLIModel(BaseSettings, optional_model):  # type: ignore
+        """
+        Class for pydantic command line model
+        """
         model_config: ClassVar[SettingsConfigDict] = {
             "cli_parse_args": True,
         }

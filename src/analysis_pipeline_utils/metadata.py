@@ -402,6 +402,15 @@ def get_docdb_client(
 
 
 def write_results_and_metadata(process: ps.DataProcess, s3_bucket: str):
+    """
+    Writes output and copies to s3.
+    Process record is written to docdb
+
+    Args:
+        process: Processing record
+        s3_bucket: Bucket to copy results to
+
+    """
     metadata = create_results_metadata(process, s3_bucket)
     with open("/results/metadata.nd.json", "w") as f:
         f.write(metadata.model_dump_json(indent=2))

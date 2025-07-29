@@ -1,3 +1,7 @@
+"""
+Functions for interacting with results
+from analysis
+"""
 import hashlib
 from typing import Dict
 

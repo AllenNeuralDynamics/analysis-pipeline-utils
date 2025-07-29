@@ -1,17 +1,23 @@
 import json
+from pathlib import Path
+from unittest.mock import mock_open, patch
+
+from aind_data_schema.base import GenericModel
 from pydantic import Field
 from pydantic_settings import BaseSettings
-from unittest.mock import patch, mock_open
-from analysis_pipeline_utils.utils_analysis_wrapper import make_cli_model
-from analysis_pipeline_utils.analysis_dispatch_model import AnalysisDispatchModel
-from analysis_pipeline_utils.utils_analysis_wrapper import get_analysis_model_parameters
-from aind_data_schema.base import GenericModel
-from pathlib import Path
 
+from analysis_pipeline_utils.analysis_dispatch_model import (
+    AnalysisDispatchModel,
+)
+from analysis_pipeline_utils.utils_analysis_wrapper import (
+    get_analysis_model_parameters,
+    make_cli_model,
+)
 
 
 class MockModel(GenericModel):
     """Create a mock analysis model for testing"""
+
     analysis_name: str = Field(
         ..., description="User-defined name for the analysis"
     )
@@ -22,10 +28,8 @@ class MockModel(GenericModel):
             "for querying analysis output",
         ),
     )
-    value_threshold: float = Field(
-        ...,
-        description="Threshold on data"
-    )
+    value_threshold: float = Field(..., description="Threshold on data")
+
 
 def test_make_cli_model() -> None:
     """Test the creation of cli model object"""
@@ -46,15 +50,19 @@ def test_make_cli_model() -> None:
     for field in model_fields:
         assert getattr(cli_model, field, "missing") is None
 
+
 def test_get_analysis_model_parameters() -> None:
     """Tests getting analysis parameters"""
-    analysis_dispatch_inputs = AnalysisDispatchModel(s3_location=["s3://path/to/bucket"], distributed_parameters={"value_threshold": 0.08})
+    analysis_dispatch_inputs = AnalysisDispatchModel(
+        s3_location=["s3://path/to/bucket"],
+        distributed_parameters={"value_threshold": 0.08},
+    )
     params_dict = {
         "fixed_parameters": {
             "analysis_name": "a",
             "analysis_tag": "V1",
-            "value_threshold": 0.5
-        }, 
+            "value_threshold": 0.5,
+        },
     }
     mock_file_data = json.dumps(params_dict)
 

@@ -2,13 +2,15 @@ import json
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, ClassVar, Optional, Union, Type, TypeVar
+from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
+from aind_data_schema.base import GenericModel
 from pydantic import create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from aind_data_schema.base import GenericModel
-from analysis_pipeline_utils.analysis_dispatch_model import AnalysisDispatchModel
+from analysis_pipeline_utils.analysis_dispatch_model import (
+    AnalysisDispatchModel,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -49,6 +51,7 @@ def make_cli_model(model_cls: Type[T]) -> Type[BaseSettings]:
 
     CLIModel.__name__ = f"{model_cls.__name__}CLI"
     return CLIModel
+
 
 def _get_merged_analysis_parameters(
     fixed_parameters: dict[str, Any],
@@ -105,6 +108,7 @@ def _get_merged_analysis_parameters(
 
     return merged_parameters
 
+
 def get_analysis_model_parameters(
     analysis_dispatch_inputs: AnalysisDispatchModel,
     analysis_model: GenericModel,
@@ -120,14 +124,14 @@ def get_analysis_model_parameters(
 
     analysis_model: GenericModel
         The analysis model with user defined parameters
-        
+
     analysis_parameters_json_path: Union[Path, None] = None
         The path to analysis_parameters.json file
 
     Returns
     -------
     dict[str, Any]
-        The merged analysis parameters 
+        The merged analysis parameters
     """
     fixed_parameters = {}
     if analysis_parameters_json_path.exists():

@@ -1,3 +1,7 @@
+"""
+Tests functions that are called
+in the analysis wrapper
+"""
 import json
 from pathlib import Path
 from unittest.mock import mock_open, patch

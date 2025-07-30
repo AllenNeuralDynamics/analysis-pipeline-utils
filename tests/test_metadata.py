@@ -1,3 +1,6 @@
+"""
+Tests functions for processing metadata
+"""
 import os
 from unittest.mock import Mock, patch
 
@@ -23,6 +26,9 @@ from analysis_pipeline_utils.metadata import (
 # Fixtures for common test data
 @pytest.fixture
 def mock_computation():
+    """
+    Mocks the computation record
+    """
     computation = Computation(
         id="test_computation_id",
         parameters=[
@@ -39,6 +45,9 @@ def mock_computation():
 
 @pytest.fixture
 def mock_pipeline_process():
+    """
+    Mocks the pipeline process
+    """
     return [
         Mock(
             capsule_id="test_capsule_id",
@@ -52,6 +61,9 @@ def mock_pipeline_process():
 
 @pytest.fixture
 def mock_code_ocean_client():
+    """
+    Mocks the code ocean client
+    """
     client = Mock()
     client.data_assets.get_data_asset.return_value = Mock(
         source_bucket=Mock(
@@ -63,6 +75,7 @@ def mock_code_ocean_client():
 
 # Test extract_parameters function
 def test_extract_parameters_with_ordered_params(mock_computation):
+    """Tests extracting parameters"""
     result = extract_parameters(mock_computation)
     assert result == {"param1": "value1", "param2": "value2"}
 
@@ -70,6 +83,7 @@ def test_extract_parameters_with_ordered_params(mock_computation):
 # Test construct_processing_record function
 @patch("analysis_pipeline_utils.metadata.query_code_ocean_metadata")
 def test_construct_processing_record(mock_query):
+    """Tests constructing processing record"""
     # Setup mock process
     mock_process = ps.DataProcess.model_construct()
     mock_process.code = ps.Code(
@@ -102,6 +116,7 @@ def test_construct_processing_record(mock_query):
     {"CODEOCEAN_DOMAIN": "test-domain", "CODEOCEAN_API_TOKEN": "test-token"},
 )
 def test_initialize_codeocean_client_success():
+    """Tests initializing code ocean client"""
     with patch("analysis_pipeline_utils.metadata.CodeOcean") as mock_co:
         mock_co.assert_called_once_with(
             domain="test-domain", token="test-token"
@@ -109,6 +124,7 @@ def test_initialize_codeocean_client_success():
 
 
 def test_initialize_codeocean_client_missing_env():
+    """Tests initializing code ocean client env"""
     with patch.dict(os.environ, {}, clear=True):
         with pytest.raises(ValueError):
             _initialize_codeocean_client()
@@ -117,6 +133,7 @@ def test_initialize_codeocean_client_missing_env():
 # Test get_code_metadata_from_git function
 @patch("analysis_pipeline_utils.metadata._run_git_command")
 def test_get_code_metadata_from_git(mock_run_git):
+    """Tests getting code metadata from git"""
     mock_run_git.side_effect = [
         "https://github.com/org/test-repo.git",  # remote URL
         "abc123",  # commit hash
@@ -133,6 +150,7 @@ def test_get_code_metadata_from_git(mock_run_git):
 # Test _run_git_command function
 @patch("subprocess.run")
 def test_run_git_command_success(mock_run):
+    """Tests run git command"""
     mock_run.return_value = Mock(returncode=0, stdout="test output\n")
 
     result = _run_git_command(["git", "test-command"])
@@ -142,11 +160,13 @@ def test_run_git_command_success(mock_run):
 
 # Test get_data_asset_url function
 def test_get_data_asset_url_aws(mock_code_ocean_client):
+    """Tests getting data asset url from aws"""
     result = get_data_asset_url(mock_code_ocean_client, "test-asset-id")
     assert result == "s3://test-bucket/test-prefix"
 
 
 def test_get_data_asset_url_non_aws(mock_code_ocean_client):
+    """Tests getting data asset url not from aws"""
     mock_code_ocean_client.data_assets.get_data_asset.return_value = Mock(
         source_bucket=Mock(origin="other")
     )
@@ -157,6 +177,7 @@ def test_get_data_asset_url_non_aws(mock_code_ocean_client):
 # Test DocDB related functions
 @patch("analysis_pipeline_utils.metadata.get_docdb_client")
 def test_docdb_record_exists_true(mock_get_client):
+    """Tests if docdb record exists - true"""
     mock_client = Mock()
     mock_client.retrieve_docdb_records.return_value = ["record"]
     mock_get_client.return_value = mock_client
@@ -167,6 +188,7 @@ def test_docdb_record_exists_true(mock_get_client):
 
 @patch("analysis_pipeline_utils.metadata.get_docdb_client")
 def test_docdb_record_exists_false(mock_get_client):
+    """Tests if docdb record exists - false"""
     mock_client = Mock()
     mock_client.retrieve_docdb_records.return_value = []
     mock_get_client.return_value = mock_client
@@ -177,6 +199,7 @@ def test_docdb_record_exists_false(mock_get_client):
 
 @patch("analysis_pipeline_utils.metadata.get_docdb_client")
 def test_get_docdb_record_single(mock_get_client):
+    """Tests getting single docdb record"""
     mock_client = Mock()
     mock_client.retrieve_docdb_records.return_value = ["record"]
     mock_get_client.return_value = mock_client

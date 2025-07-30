@@ -109,15 +109,14 @@ def test_get_merged_analysis_parameters() -> None:
     assert merged["analysis_name"] == "c"
     assert merged["value_threshold"] == 0.05  # from distributed
 
+
 def test_get_merged_no_parameters() -> None:
     """Tests with getting with no parameters"""
     analysis_dispatch_inputs = AnalysisDispatchModel(
         s3_location=["s3://path/to/bucket"],
         distributed_parameters={},
     )
-    params_dict = {
-        "fixed_parameters": {}
-    }
+    params_dict = {"fixed_parameters": {}}
     mock_file_data = json.dumps(params_dict)
 
     fake_path = Path("/fake/path/analysis_parameters.json")
@@ -130,4 +129,4 @@ def test_get_merged_no_parameters() -> None:
                 analysis_parameters_json_path=fake_path,
             )
 
-    assert not merged # empty, no parameters
+    assert not merged  # empty, no parameters

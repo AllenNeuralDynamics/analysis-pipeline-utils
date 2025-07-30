@@ -2,6 +2,7 @@
 Tests functions that are called
 in the analysis wrapper
 """
+
 import json
 from pathlib import Path
 from unittest.mock import mock_open, patch
@@ -16,6 +17,7 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
 from analysis_pipeline_utils.utils_analysis_wrapper import (
     get_analysis_model_parameters,
     make_cli_model,
+    _get_merged_analysis_parameters,
 )
 
 
@@ -80,5 +82,52 @@ def test_get_analysis_model_parameters() -> None:
                 analysis_parameters_json_path=fake_path,
             )
 
-    assert merged["analysis_name"] == "a"
-    assert merged["value_threshold"] == 0.08  # from distributed
+    assert merged.keys() == MockModel.model_fields.keys()
+
+
+def test_get_merged_analysis_parameters() -> None:
+    """Tests getting analysis parameters"""
+    fixed_parameters = {
+        "analysis_name": "a",
+        "analysis_tag": "V1",
+        "value_threshold": 0.5,
+    }
+    cli_parameters = {
+        "analysis_name": "b",
+        "analysis_tag": "V1",
+        "value_threshold": 0.6,
+    }
+    distributed_parameters = {
+        "analysis_name": "c",
+        "analysis_tag": "V1",
+        "value_threshold": 0.05,
+    }
+
+    merged = _get_merged_analysis_parameters(
+        fixed_parameters, cli_parameters, distributed_parameters
+    )
+    assert merged["analysis_name"] == "c"
+    assert merged["value_threshold"] == 0.05  # from distributed
+
+def test_get_merged_no_parameters() -> None:
+    """Tests with getting with no parameters"""
+    analysis_dispatch_inputs = AnalysisDispatchModel(
+        s3_location=["s3://path/to/bucket"],
+        distributed_parameters={},
+    )
+    params_dict = {
+        "fixed_parameters": {}
+    }
+    mock_file_data = json.dumps(params_dict)
+
+    fake_path = Path("/fake/path/analysis_parameters.json")
+
+    with patch("builtins.open", mock_open(read_data=mock_file_data)):
+        with patch.object(Path, "exists", return_value=False):
+            merged = get_analysis_model_parameters(
+                analysis_dispatch_inputs,
+                MockModel,
+                analysis_parameters_json_path=fake_path,
+            )
+
+    assert not merged # empty, no parameters

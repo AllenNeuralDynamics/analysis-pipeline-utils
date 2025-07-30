@@ -1,9 +1,15 @@
+"""
+Functions for analysis dispatcher
+"""
 import logging
-from typing import Any, List, Union, Optional
+from typing import Any, List, Optional, Union
 
 import s3fs
 from aind_data_access_api.document_db import MetadataDbClient
-from analysis_pipeline_utils.analysis_dispatch_model import AnalysisDispatchModel
+
+from analysis_pipeline_utils.analysis_dispatch_model import (
+    AnalysisDispatchModel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +24,9 @@ docdb_api_client = MetadataDbClient(
 )
 
 
-def get_data_asset_paths_from_query(query: dict, group_by: Optional[str]) -> List[str]:
+def get_data_asset_paths_from_query(
+    query: dict, group_by: Optional[str]
+) -> List[str]:
     """
     Retrieve data asset paths based on query passed in.
 
@@ -35,12 +43,13 @@ def get_data_asset_paths_from_query(query: dict, group_by: Optional[str]) -> Lis
     asset_id_prefix = "location"
     response = docdb_api_client.aggregate_docdb_records(
         pipeline=[
-            {'$match': query},
-            {'$group': {
-                "_id": "$"+group_by if group_by else "$_id",
-                "asset_location": {"$push": f"${asset_id_prefix}"}
+            {"$match": query},
+            {
+                "$group": {
+                    "_id": "$" + group_by if group_by else "$_id",
+                    "asset_location": {"$push": f"${asset_id_prefix}"},
                 }
-            }
+            },
         ]
     )
 
@@ -73,12 +82,13 @@ def get_s3_input_information(
     Returns
     -------
     s3_paths: list of str
-        A list of S3 bucket paths 
+        A list of S3 bucket paths
 
     s3_file_paths: list of str
         A list of either single S3 file locations (URLs) that match the query
         and the specified file extension or a list of S3 file locations
-        if multiple files are returned for the file extension and split_files is False.
+        if multiple files are returned for the
+        file extension and split_files is False.
         Each location is prefixed with "s3://".
     """
     s3_paths = []
@@ -90,16 +100,14 @@ def get_s3_input_information(
 
         if file_extension != "":
             file_paths = tuple(
-                s3_file_system.glob(
-                    f"{location}/**/*{file_extension}"
-                )
+                s3_file_system.glob(f"{location}/**/*{file_extension}")
             )
             if not file_paths:
                 logging.warning(
                     f"No {file_extension} found in {location} - skipping."
                 )
                 continue
-            
+
             if split_files:
                 for file in file_paths:
                     s3_file_paths.append(f"s3://{file}")
@@ -108,9 +116,9 @@ def get_s3_input_information(
             logger.info(
                 f"Found {len(file_paths)} *{file_extension} files from s3"
             )
-    
 
     return s3_paths, s3_file_paths
+
 
 def get_input_model_list(
     data_asset_paths: Union[List[str], List[List[str]]],
@@ -119,7 +127,8 @@ def get_input_model_list(
     distributed_analysis_parameters: Union[List[dict[str, Any]], None] = None,
 ) -> list[AnalysisDispatchModel]:
     """
-    Writes the input model with the S3 location from the query and input arguments
+    Writes the input model with the
+    S3 location from the query and input arguments
 
     Parameters
     ----------
@@ -165,12 +174,10 @@ def get_input_model_list(
     all_grouped_models = []
 
     for group in grouped_assets:
-        s3_buckets, s3_paths = (
-            get_s3_input_information(
-                data_asset_paths=group,
-                file_extension=file_extension,
-                split_files=split_files,
-            )
+        s3_buckets, s3_paths = get_s3_input_information(
+            data_asset_paths=group,
+            file_extension=file_extension,
+            split_files=split_files,
         )
 
         if is_flat:

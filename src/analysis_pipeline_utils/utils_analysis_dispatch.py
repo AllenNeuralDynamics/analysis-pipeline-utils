@@ -35,6 +35,9 @@ def get_data_asset_paths_from_query(
     ----------
     query : dict
         A dictionary representing the query criteria used to filter data assets
+    
+    group_by: str, Optional
+        Field to group results from query by
 
     Returns
     -------

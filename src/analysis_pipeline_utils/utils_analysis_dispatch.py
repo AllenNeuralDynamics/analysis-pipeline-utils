@@ -96,8 +96,6 @@ def get_s3_input_information(
     s3_file_system = s3fs.S3FileSystem()
 
     for location in data_asset_paths:
-        s3_paths.append(location)
-
         if file_extension != "":
             file_paths = tuple(
                 s3_file_system.glob(f"{location}/**/*{file_extension}")
@@ -116,6 +114,9 @@ def get_s3_input_information(
             logger.info(
                 f"Found {len(file_paths)} *{file_extension} files from s3"
             )
+            s3_paths.append(location)
+        else:
+            s3_paths.append(location)
 
     return s3_paths, s3_file_paths
 

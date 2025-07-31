@@ -146,7 +146,7 @@ def test_get_s3_input_information_no_glob(mock_s3fs):
         data_asset_paths=["bucket/key"], file_extension=".nwb"
     )
 
-    assert s3_paths == ["bucket/key"]
+    assert not s3_paths
     assert not s3_file_paths
 
 

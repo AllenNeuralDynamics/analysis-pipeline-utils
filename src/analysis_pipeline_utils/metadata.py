@@ -93,10 +93,8 @@ def _initialize_codeocean_client() -> CodeOcean:
     domain = os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
     token = os.getenv("CODEOCEAN_API_TOKEN")
 
-    if not all([domain, token]):
-        raise ValueError(
-            "Warning: Missing required Code Ocean environment variables"
-        )
+    if not token:
+        raise ValueError("CODEOCEAN_API_TOKEN environment variable is required")
 
     return CodeOcean(domain=f"https://{domain}", token=token)
 

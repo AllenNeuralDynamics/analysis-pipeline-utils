@@ -2,7 +2,9 @@
 Tests functions for interacting
 with results from analysis
 """
+
 import hashlib
+from unittest.mock import MagicMock, patch
 
 import aind_data_schema.core.processing as ps
 import pytest
@@ -10,6 +12,7 @@ from aind_data_schema.core.metadata import Metadata
 
 from analysis_pipeline_utils.result_files import (
     _processing_prefix,
+    copy_results_to_s3,
     create_results_metadata,
 )
 
@@ -32,6 +35,44 @@ def mock_process():
         ),
     )
     return process
+
+
+@pytest.fixture
+def mock_metadata():
+    """
+    Mock metadata
+    """
+    return Metadata(name="test", location="s3://mock-bucket/mock-path")
+
+
+def test_copy_results_to_s3_success(mock_metadata):
+    """Tests copying results with success"""
+    with patch("fsspec.filesystem") as mock_filesystem:
+        mock_fs = MagicMock()
+        mock_fs.exists.return_value = False
+        mock_filesystem.return_value = mock_fs
+
+        copy_results_to_s3(metadata=mock_metadata, results_path="/results")
+
+        mock_filesystem.assert_called_once_with("s3")
+        mock_fs.exists.assert_called_once_with(mock_metadata.location)
+        mock_fs.put.assert_called_once_with(
+            "/results", mock_metadata.location, recursive=True
+        )
+
+
+def test_copy_results_to_s3_already_exists(mock_metadata):
+    """Tests copying results with failure"""
+    with patch("fsspec.filesystem") as mock_filesystem:
+        mock_fs = MagicMock()
+        mock_fs.exists.return_value = True
+        mock_filesystem.return_value = mock_fs
+
+        with pytest.raises(
+            Exception,
+            match="S3 path s3://mock-bucket/mock-path already exists.",
+        ):
+            copy_results_to_s3(metadata=mock_metadata, results_path="/results")
 
 
 def test_create_results_metadata(mock_process):
@@ -57,7 +98,7 @@ def test_create_results_metadata(mock_process):
 
 def test_processing_prefix_consistency(mock_process):
     """Test that _processing_prefix returns
-       consistent results for the same input."""
+    consistent results for the same input."""
     prefix1 = _processing_prefix(mock_process)
     prefix2 = _processing_prefix(mock_process)
 
@@ -67,7 +108,7 @@ def test_processing_prefix_consistency(mock_process):
 
 def test_processing_prefix_uniqueness():
     """Test that _processing_prefix returns
-       different results for different inputs."""
+    different results for different inputs."""
     process1 = ps.DataProcess.model_construct()
     process1.code = ps.Code(
         url="https://github.com/test/repo", name="process1", version="1.0"

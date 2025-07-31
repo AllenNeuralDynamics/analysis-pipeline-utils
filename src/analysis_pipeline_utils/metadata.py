@@ -84,11 +84,11 @@ def _initialize_codeocean_client() -> CodeOcean:
     Raises:
         ValueError: If required environment variables are missing
     """
-    domain = os.getenv("CODEOCEAN_DOMAIN")
+    domain = os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
     token = os.getenv("CODEOCEAN_API_TOKEN")
     
-    if not all([domain, token]):
-        raise ValueError("Warning: Missing required Code Ocean environment variables")
+    if not token:
+        raise ValueError("CODEOCEAN_API_TOKEN environment variable is required")
 
     return CodeOcean(domain=f"https://{domain}", token=token)
 
@@ -133,7 +133,7 @@ def query_code_ocean_metadata(capsule_id: Optional[str] = None) -> ps.DataProces
     capsule = client.capsules.get_capsule(capsule_id)
     if computation.data_assets:
         input_data = [
-            DataAsset(get_data_asset_url(client, asset.id))
+            DataAsset(url=get_data_asset_url(client, asset.id))
             for asset in computation.data_assets
         ]
     else:

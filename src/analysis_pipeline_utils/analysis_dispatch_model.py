@@ -18,7 +18,6 @@ class AnalysisDispatchModel(BaseModel):
         description="S3 bucket path(s) used in analysis",
     )
 
-
     file_location: Optional[List[str]] = Field(
         None,
         title="file location",

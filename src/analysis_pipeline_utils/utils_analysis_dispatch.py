@@ -1,6 +1,7 @@
 """
 Functions for analysis dispatcher
 """
+
 import logging
 from typing import Any, List, Optional, Union
 
@@ -158,67 +159,97 @@ def get_input_model_list(
         Returns a list of input analysis jobs
     """
 
+    def make_models(
+        s3_buckets: List[str], s3_paths: List[str]
+    ) -> List[AnalysisDispatchModel]:
+        """
+        Creates input model list
+
+        Parameters
+        ----------
+        s3_buckets: List[str]
+            The paths to s3 buckets
+
+        s3_paths:
+            The paths to files in s3 if file extension
+            specified
+
+        Returns
+        -------
+        List: AnalysisDispatchModel
+            The list of input models
+        """
+        models = []
+        if is_flat:
+            for index, s3_bucket in enumerate(s3_buckets):
+                file_location = [s3_paths[index]] if s3_paths else None
+                if distributed_analysis_parameters:
+                    for parameters in distributed_analysis_parameters:
+                        models.append(
+                            AnalysisDispatchModel(
+                                s3_location=[s3_bucket],
+                                file_location=file_location,
+                                distributed_parameters=parameters,
+                            )
+                        )
+                else:
+                    models.append(
+                        AnalysisDispatchModel(
+                            s3_location=[s3_bucket],
+                            file_location=file_location,
+                        )
+                    )
+        else:
+            file_location = s3_paths if s3_paths else None
+            if distributed_analysis_parameters:
+                for parameters in distributed_analysis_parameters:
+                    models.append(
+                        AnalysisDispatchModel(
+                            s3_location=s3_buckets,
+                            file_location=file_location,
+                            distributed_parameters=parameters,
+                        )
+                    )
+            else:
+                models.append(
+                    AnalysisDispatchModel(
+                        s3_location=s3_buckets,
+                        file_location=file_location,
+                    )
+                )
+        return models
+
     # Normalize to grouped format
-    is_flat = True
-    if isinstance(data_asset_paths, list) and all(
+    is_flat = isinstance(data_asset_paths, list) and all(
         isinstance(i, str) for i in data_asset_paths
-    ):
-        logger.info("Flat data asset ids list provided")
-        grouped_assets = [data_asset_paths]
-    elif isinstance(data_asset_paths, list) and all(
-        isinstance(i, list) for i in data_asset_paths
-    ):
-        logger.info("Nested data asset ids list provided")
-        grouped_assets = data_asset_paths
-        is_flat = False
+    )
+
+    grouped_assets = (
+        [data_asset_paths]
+        if is_flat
+        else (
+            data_asset_paths
+            if all(isinstance(i, list) for i in data_asset_paths)
+            else []
+        )
+    )
+
+    logger.info(
+        "Flat data asset ids list provided"
+        if is_flat
+        else "Nested data asset ids list provided"
+    )
 
     all_grouped_models = []
-
     for group in grouped_assets:
         s3_buckets, s3_paths = get_s3_input_information(
             data_asset_paths=group,
             file_extension=file_extension,
             split_files=split_files,
         )
+        if not s3_buckets:
+            continue
 
-        if is_flat:
-            for index, s3_bucket in enumerate(s3_buckets):
-                if distributed_analysis_parameters is None:
-                    all_grouped_models.append(
-                        AnalysisDispatchModel(
-                            s3_location=[s3_bucket],
-                            file_location=(
-                                [s3_paths[index]] if s3_paths else None
-                            ),
-                        )
-                    )
-                else:
-                    for parameters in distributed_analysis_parameters:
-                        all_grouped_models.append(
-                            AnalysisDispatchModel(
-                                s3_location=[s3_bucket],
-                                file_location=(
-                                    [s3_paths[index]] if s3_paths else None
-                                ),
-                                distributed_parameters=parameters,
-                            )
-                        )
-        else:
-            if distributed_analysis_parameters is None:
-                all_grouped_models.append(
-                    AnalysisDispatchModel(
-                        s3_location=s3_buckets,
-                        file_location=s3_paths if s3_paths else None,
-                    )
-                )
-            else:
-                for parameters in distributed_analysis_parameters:
-                    all_grouped_models.append(
-                        AnalysisDispatchModel(
-                            s3_location=s3_buckets,
-                            file_location=s3_paths if s3_paths else None,
-                            distributed_parameters=parameters,
-                        )
-                    )
+        all_grouped_models.extend(make_models(s3_buckets, s3_paths))
 
     return all_grouped_models

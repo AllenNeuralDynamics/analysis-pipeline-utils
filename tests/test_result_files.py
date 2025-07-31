@@ -128,7 +128,7 @@ def test_processing_prefix_uniqueness():
 def test_processing_prefix_implementation():
     """Test the actual implementation of _processing_prefix."""
     process = ps.DataProcess.model_construct()
-    process_str = str(process).encode("utf-8")
-    expected_hash = hashlib.sha256(process_str).hexdigest()
+    process_str_json = process.model_dump_json().encode("utf-8")
+    expected_hash = hashlib.sha256(process_str_json).hexdigest()
 
     assert _processing_prefix(process) == expected_hash

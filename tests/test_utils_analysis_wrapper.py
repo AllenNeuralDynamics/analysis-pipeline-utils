@@ -49,7 +49,7 @@ def test_make_cli_model() -> None:
 
     # Compare fields keys on the class
     model_fields = set(MockModel.model_fields.keys())
-    cli_fields = set(cli_model_class.model_fields.keys())
+    cli_fields = set(cli_model.model_dump().keys())
     assert model_fields == cli_fields
 
     # check the CLI model instance fields exist (all optional, so default None)
@@ -74,10 +74,14 @@ def test_get_analysis_model_parameters() -> None:
 
     fake_path = Path("/fake/path/analysis_parameters.json")
 
+    cli_cls = make_cli_model(MockModel)
+    cli_model = cli_cls()
+
     with patch("builtins.open", mock_open(read_data=mock_file_data)):
         with patch.object(Path, "exists", return_value=True):
             merged = get_analysis_model_parameters(
                 analysis_dispatch_inputs,
+                cli_model,
                 MockModel,
                 analysis_parameters_json_path=fake_path,
             )
@@ -121,10 +125,14 @@ def test_get_merged_no_parameters() -> None:
 
     fake_path = Path("/fake/path/analysis_parameters.json")
 
+    cli_cls = make_cli_model(MockModel)
+    cli_model = cli_cls()
+
     with patch("builtins.open", mock_open(read_data=mock_file_data)):
         with patch.object(Path, "exists", return_value=False):
             merged = get_analysis_model_parameters(
                 analysis_dispatch_inputs,
+                cli_model,
                 MockModel,
                 analysis_parameters_json_path=fake_path,
             )

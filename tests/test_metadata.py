@@ -118,8 +118,9 @@ def test_construct_processing_record(mock_query):
 def test_initialize_codeocean_client_success():
     """Tests initializing code ocean client"""
     with patch("analysis_pipeline_utils.metadata.CodeOcean") as mock_co:
+        _initialize_codeocean_client()
         mock_co.assert_called_once_with(
-            domain="test-domain", token="test-token"
+            domain="https://test-domain", token="test-token"
         )
 
 

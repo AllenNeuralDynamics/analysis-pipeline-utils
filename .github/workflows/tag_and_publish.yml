@@ -43,7 +43,7 @@ jobs:
         sed -i "s/$interrogate_badge/$new_interrogate_badge/g" README.md
     - name: Get Coverage values and Update README.md
       run: |
-        coverage run -m unittest discover
+        coverage run -m pytest
         coverage_val=$(coverage report | grep "^TOTAL" | grep -o '[0-9]\+%' | grep -o '[0-9]\+')
         coverage_badge=$(grep -o "coverage-[^?]*" README.md)
         if (( $(echo "$coverage_val >= 90.00" | bc -l) )); then 

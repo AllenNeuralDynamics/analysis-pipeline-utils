@@ -78,7 +78,6 @@ def processing_prefix(process: ps.DataProcess) -> str:
 
     Args:
         process: Processing record
-    
     Returns:
         The hashed string from the model
     """

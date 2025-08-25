@@ -9,11 +9,12 @@ from unittest.mock import MagicMock, patch
 import aind_data_schema.core.processing as ps
 import pytest
 from aind_data_schema.core.metadata import Metadata
+from aind_data_schema.core.processing import Processing
 
 from analysis_pipeline_utils.result_files import (
-    processing_prefix,
     copy_results_to_s3,
     create_results_metadata,
+    processing_prefix,
 )
 
 
@@ -38,11 +39,17 @@ def mock_process():
 
 
 @pytest.fixture
-def mock_metadata():
+def mock_metadata(mock_process):
     """
     Mock metadata
     """
-    return Metadata(name="test", location="s3://mock-bucket/mock-path")
+    return Metadata(
+        name="test",
+        location="s3://mock-bucket/mock-path",
+        processing=Processing.create_with_sequential_process_graph(
+            data_processes=[mock_process]
+        ),
+    )
 
 
 def test_copy_results_to_s3_success(mock_metadata):

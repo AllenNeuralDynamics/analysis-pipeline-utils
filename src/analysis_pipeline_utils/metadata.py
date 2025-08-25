@@ -9,7 +9,6 @@ suggested process for analysis wrapper capsule:
 import logging
 import os
 import subprocess
-import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -21,7 +20,11 @@ from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
 
 from .analysis_dispatch_model import AnalysisDispatchModel
-from .result_files import copy_results_to_s3, create_results_metadata, processing_prefix
+from .result_files import (
+    copy_results_to_s3,
+    create_results_metadata,
+    processing_prefix,
+)
 
 PARAM_PREFIX = "param_"
 
@@ -295,21 +298,25 @@ def write_to_docdb(metadata: Metadata, hash: str):
 
     Args:
         metadata: Metadata record to be written
-        hash: str hash on processing.code 
+        hash: str hash on processing.code
     """
     client = get_docdb_client()
     metadata_dump = metadata.model_dump(mode="json")
-    metadata_dump["_id"] = (
-        hash
-    )  # Ensure a unique ID for the record
+    metadata_dump["_id"] = hash  # Ensure a unique ID for the record
     response = client.insert_one_docdb_record(metadata_dump)
     return response
 
 
-def docdb_record_exists(processing: ps.DataProcess):
+def docdb_record_exists(processing: ps.DataProcess) -> bool:
     """
     Check the document database for
     whether a record already exists matching the analysis metadata
+
+    Args:
+        processing: Processing record to check
+
+    Returns:
+        True if record exists or False if not
     """
     responses = get_docdb_records(processing)
 
@@ -331,7 +338,7 @@ def get_docdb_records(processing: ps.DataProcess) -> List[Dict[str, Any]]:
 
     Args:
         processing: Processing record to check
-    
+
     Returns:
         List of dictionary records
     """
@@ -413,7 +420,9 @@ def get_docdb_client(
     return client
 
 
-def write_results_and_metadata(process: ps.DataProcess, s3_bucket: str):
+def write_results_and_metadata(
+    process: ps.DataProcess, s3_bucket: str
+) -> None:
     """
     Writes output and copies to s3.
     Process record is written to docdb

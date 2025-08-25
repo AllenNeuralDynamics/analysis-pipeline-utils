@@ -45,7 +45,7 @@ def copy_results_to_s3(metadata: Metadata, results_path="/results"):
 
 def create_results_metadata(
     process: ps.DataProcess, s3_bucket: str
-) -> Metadata:
+) -> tuple[Metadata, str]:
     """
     Create metadata for the results of a processing job.
 
@@ -55,8 +55,10 @@ def create_results_metadata(
 
     Returns:
         Metadata: The created metadata object.
+        s3_prefix: hash based on processing.code field
+        that will be used as id in docdb
     """
-    s3_prefix = _processing_prefix(process)
+    s3_prefix = processing_prefix(process)
     s3_url = f"s3://{s3_bucket}/{s3_prefix}"
 
     md = Metadata(
@@ -67,15 +69,21 @@ def create_results_metadata(
         name=s3_prefix,
         location=s3_url,
     )
-    return md
+    return md, s3_prefix
 
 
-def _processing_prefix(process: ps.DataProcess) -> str:
+def processing_prefix(process: ps.DataProcess) -> str:
     """
     Generate a unique ID for the processing based on its metadata.
-    This includes a timestamp, so it will change with each run.
+
+    Args:
+        process: Processing record
+    
+    Returns:
+        The hashed string from the model
     """
-    # TODO: should this ignore some fields? use process.code only?
-    process_metadata = process.model_dump_json().encode("utf-8")
+    # updated to use process.code
+    # TODO: hash on input data + parameters from process.code
+    process_metadata = process.code.model_dump_json().encode("utf-8")
 
     return hashlib.sha256(process_metadata).hexdigest()

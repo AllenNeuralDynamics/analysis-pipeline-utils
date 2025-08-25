@@ -177,7 +177,8 @@ def test_get_data_asset_url_non_aws(mock_code_ocean_client):
 
 # Test DocDB related functions
 @patch("analysis_pipeline_utils.metadata.get_docdb_client")
-def test_docdb_record_exists_true(mock_get_client):
+@patch("analysis_pipeline_utils.metadata.processing_prefix", return_value="fakehash")
+def test_docdb_record_exists_true(mock_prefix, mock_get_client):
     """Tests if docdb record exists - true"""
     mock_client = Mock()
     mock_client.retrieve_docdb_records.return_value = ["record"]
@@ -188,7 +189,8 @@ def test_docdb_record_exists_true(mock_get_client):
 
 
 @patch("analysis_pipeline_utils.metadata.get_docdb_client")
-def test_docdb_record_exists_false(mock_get_client):
+@patch("analysis_pipeline_utils.metadata.processing_prefix", return_value="fakehash")
+def test_docdb_record_exists_false(mock_prefix, mock_get_client):
     """Tests if docdb record exists - false"""
     mock_client = Mock()
     mock_client.retrieve_docdb_records.return_value = []
@@ -199,7 +201,8 @@ def test_docdb_record_exists_false(mock_get_client):
 
 
 @patch("analysis_pipeline_utils.metadata.get_docdb_client")
-def test_get_docdb_record_single(mock_get_client):
+@patch("analysis_pipeline_utils.metadata.processing_prefix", return_value="fakehash")
+def test_get_docdb_record_single(mock_prefix, mock_get_client):
     """Tests getting single docdb record"""
     mock_client = Mock()
     mock_client.retrieve_docdb_records.return_value = ["record"]

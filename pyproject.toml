@@ -17,10 +17,10 @@ readme = "README.md"
 dynamic = ["version"]
 
 dependencies = [
-    'aind-data-schema @ git+https://github.com/AllenNeuralDynamics/aind-data-schema.git@dev',
+    "aind-data-schema",
     'aind-data-access-api',
     'codeocean',
-    'fsspec[s3]'
+    'fsspec[s3]',
 ]
 
 [project.optional-dependencies]

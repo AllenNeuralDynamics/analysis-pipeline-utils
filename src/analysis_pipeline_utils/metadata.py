@@ -9,7 +9,6 @@ suggested process for analysis wrapper capsule:
 import logging
 import os
 import subprocess
-import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -21,7 +20,11 @@ from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
 
 from .analysis_dispatch_model import AnalysisDispatchModel
-from .result_files import copy_results_to_s3, create_results_metadata
+from .result_files import (
+    copy_results_to_s3,
+    create_results_metadata,
+    processing_prefix,
+)
 
 PARAM_PREFIX = "param_"
 
@@ -289,25 +292,33 @@ def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
         )
 
 
-def write_to_docdb(metadata: Metadata):
+def write_to_docdb(metadata: Metadata, hash: str):
     """
     Write the processing record to the document database
+
+    Args:
+        metadata: Metadata record to be written
+        hash: str hash on processing.code
     """
     client = get_docdb_client()
     metadata_dump = metadata.model_dump(mode="json")
-    metadata_dump["_id"] = (
-        uuid.uuid4().hex
-    )  # Ensure a unique ID for the record
+    metadata_dump["_id"] = hash  # Ensure a unique ID for the record
     response = client.insert_one_docdb_record(metadata_dump)
     return response
 
 
-def docdb_record_exists(processing: ps.DataProcess):
+def docdb_record_exists(processing: ps.DataProcess) -> bool:
     """
     Check the document database for
     whether a record already exists matching the analysis metadata
+
+    Args:
+        processing: Processing record to check
+
+    Returns:
+        True if record exists or False if not
     """
-    responses = get_docdb_records(processing.code)
+    responses = get_docdb_records(processing)
 
     if len(responses) == 1:
         return True
@@ -321,14 +332,20 @@ def docdb_record_exists(processing: ps.DataProcess):
         return False
 
 
-def get_docdb_records(code: ps.Code) -> List[Dict[str, Any]]:
+def get_docdb_records(processing: ps.DataProcess) -> List[Dict[str, Any]]:
     """
-    Get the document database record for the given processing code object
+    Get the document database record for the given processing object
+
+    Args:
+        processing: Processing record to check
+
+    Returns:
+        List of dictionary records
     """
     client: MetadataDbClient = get_docdb_client()
 
-    code_dict = code.model_dump(mode="json")
-    filter_query = {"processing.data_processes.0.code": code_dict}
+    docdb_id = processing_prefix(processing)
+    filter_query = {"_id": docdb_id}
 
     responses = client.retrieve_docdb_records(filter_query=filter_query)
     return responses
@@ -403,7 +420,9 @@ def get_docdb_client(
     return client
 
 
-def write_results_and_metadata(process: ps.DataProcess, s3_bucket: str):
+def write_results_and_metadata(
+    process: ps.DataProcess, s3_bucket: str
+) -> None:
     """
     Writes output and copies to s3.
     Process record is written to docdb
@@ -413,8 +432,8 @@ def write_results_and_metadata(process: ps.DataProcess, s3_bucket: str):
         s3_bucket: Bucket to copy results to
 
     """
-    metadata = create_results_metadata(process, s3_bucket)
+    metadata, docdb_id = create_results_metadata(process, s3_bucket)
     with open("/results/metadata.nd.json", "w") as f:
         f.write(metadata.model_dump_json(indent=2))
     copy_results_to_s3(metadata)
-    write_to_docdb(metadata)
+    write_to_docdb(metadata, docdb_id)

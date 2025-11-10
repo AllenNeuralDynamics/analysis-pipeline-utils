@@ -7,10 +7,10 @@ from typing import Any, List, Optional, Union
 
 import s3fs
 
-from analysis_pipeline_utils.metadata import get_docdb_client
 from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
+from analysis_pipeline_utils.metadata import get_docdb_client
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +42,12 @@ def get_data_asset_paths_and_docdb_id_from_query(
     Returns
     -------
     List of str
-        A list of data asset paths 
+        A list of data asset paths
         that match the provided query criteria.
-    
+
     List of str
         A list of docdb record ids that match the query
-    
+
     """
 
     asset_id_prefix = "location"
@@ -58,12 +58,11 @@ def get_data_asset_paths_and_docdb_id_from_query(
                 "$group": {
                     "_id": "$" + group_by if group_by else "$_id",
                     "asset_location": {"$push": f"${asset_id_prefix}"},
-                    "docdb_id": {"$push": f"$_id"}
+                    "docdb_id": {"$push": "$_id"},
                 }
             },
         ]
     )
-
 
     locations = [x["asset_location"] for x in response]
     docdb_ids = [x["docdb_id"] for x in response]
@@ -77,7 +76,7 @@ def get_s3_and_docdb_input_information(
     split_files: bool = True,
 ) -> tuple[List[str], Union[List[str], List[List[str]]], List[str]]:
     """
-    Returns tuple of list of s3 buckets, list of s3 paths, 
+    Returns tuple of list of s3 buckets, list of s3 paths,
     looking for the file extension if specified and list of
     docdb record ids for each asset
 
@@ -106,7 +105,7 @@ def get_s3_and_docdb_input_information(
         if multiple files are returned for the
         file extension and split_files is False.
         Each location is prefixed with "s3://".
-    
+
     docdb_record_ids:
         A list of docdb record ifs
     """
@@ -134,7 +133,7 @@ def get_s3_and_docdb_input_information(
             logger.info(
                 f"Found {len(file_paths)} *{file_extension} files from s3"
             )
-   
+
         s3_paths.append(location)
         docdb_ids.append(docdb_record_ids[index])
 
@@ -158,7 +157,7 @@ def get_input_model_list(
     data_asset_paths: Union[list[str], list[list[str]], None]
         The data asset paths to get input models for.
         Either a flat list or nested list of lists.
-    
+
     docdb_record_ids: Union[list[str], list[list[str]], None]
         The docdb record ids to get input models for.
         Either a flat list or nested list of lists.
@@ -197,7 +196,7 @@ def get_input_model_list(
         s3_paths:
             The paths to files in s3 if file extension
             specified
-        
+
         docdb_record_ids: List[str]
             The docdb ids to be used for querying
 
@@ -217,7 +216,7 @@ def get_input_model_list(
                                 s3_location=[s3_bucket],
                                 file_location=file_location,
                                 distributed_parameters=parameters,
-                                docdb_record_id=[docdb_record_ids[index]]
+                                docdb_record_id=[docdb_record_ids[index]],
                             )
                         )
                 else:
@@ -225,7 +224,7 @@ def get_input_model_list(
                         AnalysisDispatchModel(
                             s3_location=[s3_bucket],
                             file_location=file_location,
-                            docdb_record_id=[docdb_record_ids[index]]
+                            docdb_record_id=[docdb_record_ids[index]],
                         )
                     )
         else:
@@ -237,7 +236,7 @@ def get_input_model_list(
                             s3_location=s3_buckets,
                             file_location=file_location,
                             distributed_parameters=parameters,
-                            docdb_record_id=docdb_record_ids
+                            docdb_record_id=docdb_record_ids,
                         )
                     )
             else:
@@ -245,7 +244,7 @@ def get_input_model_list(
                     AnalysisDispatchModel(
                         s3_location=s3_buckets,
                         file_location=file_location,
-                        docdb_record_id=docdb_record_ids
+                        docdb_record_id=docdb_record_ids,
                     )
                 )
         return models
@@ -283,15 +282,19 @@ def get_input_model_list(
 
     all_grouped_models = []
     for index, group in enumerate(grouped_assets):
-        s3_buckets, s3_paths, asset_docdb_record_ids = get_s3_and_docdb_input_information(
-            data_asset_paths=group,
-            docdb_record_ids=grouped_docdb_record_ids[index],
-            file_extension=file_extension,
-            split_files=split_files,
+        s3_buckets, s3_paths, asset_docdb_record_ids = (
+            get_s3_and_docdb_input_information(
+                data_asset_paths=group,
+                docdb_record_ids=grouped_docdb_record_ids[index],
+                file_extension=file_extension,
+                split_files=split_files,
+            )
         )
         if not s3_buckets:
             continue
 
-        all_grouped_models.extend(make_models(s3_buckets, s3_paths, asset_docdb_record_ids))
+        all_grouped_models.extend(
+            make_models(s3_buckets, s3_paths, asset_docdb_record_ids)
+        )
 
     return all_grouped_models

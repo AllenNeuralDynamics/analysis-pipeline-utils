@@ -36,8 +36,5 @@ class AnalysisDispatchModel(BaseModel):
     docdb_record_id: List[str] = Field(
         ...,
         title="Docdb record id",
-        description=(
-            "Docdb record ids to use for "
-            "getting metadata"
-        )
+        description=("Docdb record ids to use for " "getting metadata"),
     )

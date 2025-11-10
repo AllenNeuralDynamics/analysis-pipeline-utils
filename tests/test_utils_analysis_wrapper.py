@@ -62,7 +62,7 @@ def test_get_analysis_model_parameters() -> None:
     analysis_dispatch_inputs = AnalysisDispatchModel(
         s3_location=["s3://path/to/bucket"],
         distributed_parameters={"value_threshold": 0.08},
-        docdb_record_id=["id1"]
+        docdb_record_id=["id1"],
     )
     params_dict = {
         "fixed_parameters": {
@@ -120,7 +120,7 @@ def test_get_merged_no_parameters() -> None:
     analysis_dispatch_inputs = AnalysisDispatchModel(
         s3_location=["s3://path/to/bucket"],
         distributed_parameters={},
-        docdb_record_id=["id1"]
+        docdb_record_id=["id1"],
     )
     params_dict = {"fixed_parameters": {}}
     mock_file_data = json.dumps(params_dict)

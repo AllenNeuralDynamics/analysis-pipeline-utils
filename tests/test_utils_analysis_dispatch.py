@@ -24,15 +24,21 @@ def test_get_data_asset_ids_from_query(mock_docdb_client):
         {
             "_id": "group1",
             "asset_location": ["id1/path/to/bucket", "id2/path/to/bucket"],
-            "docdb_id": "id1"
+            "docdb_id": "id1",
         },
-        {"_id": "group2", "asset_location": ["id3/path/to/bucket"], "docdb_id": "id2"},
+        {
+            "_id": "group2",
+            "asset_location": ["id3/path/to/bucket"],
+            "docdb_id": "id2",
+        },
     ]
 
     query = {"experiment_type": "behavior"}
     group_by = "session"
 
-    result_paths, result_ids = get_data_asset_paths_and_docdb_id_from_query(query, group_by)
+    result_paths, result_ids = get_data_asset_paths_and_docdb_id_from_query(
+        query, group_by
+    )
 
     # Check that the mock was called correctly
     mock_docdb_client.aggregate_docdb_records.assert_called_once_with(
@@ -42,7 +48,7 @@ def test_get_data_asset_ids_from_query(mock_docdb_client):
                 "$group": {
                     "_id": "$session",
                     "asset_location": {"$push": "$location"},
-                    "docdb_id": {"$push": "$_id"}
+                    "docdb_id": {"$push": "$_id"},
                 }
             },
         ]
@@ -53,19 +59,23 @@ def test_get_data_asset_ids_from_query(mock_docdb_client):
         ["id1/path/to/bucket", "id2/path/to/bucket"],
         ["id3/path/to/bucket"],
     ]
-    assert result_ids == [
-        "id1", "id2"
-    ]
+    assert result_ids == ["id1", "id2"]
 
 
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.docdb_api_client")
 def test_get_data_asset_ids_no_group(mock_docdb_client):
     """Tests getting data asset ids with no grouping"""
     mock_docdb_client.aggregate_docdb_records.return_value = [
-        {"_id": "some_id", "asset_location": ["id4/path/to/bucket"], "docdb_id": "some_id"}
+        {
+            "_id": "some_id",
+            "asset_location": ["id4/path/to/bucket"],
+            "docdb_id": "some_id",
+        }
     ]
 
-    result_path, result_id = get_data_asset_paths_and_docdb_id_from_query({"a": 1}, group_by=None)
+    result_path, result_id = get_data_asset_paths_and_docdb_id_from_query(
+        {"a": 1}, group_by=None
+    )
 
     mock_docdb_client.aggregate_docdb_records.assert_called_once_with(
         pipeline=[
@@ -74,8 +84,7 @@ def test_get_data_asset_ids_no_group(mock_docdb_client):
                 "$group": {
                     "_id": "$_id",
                     "asset_location": {"$push": "$location"},
-                    "docdb_id": {"$push": "$_id"}
-
+                    "docdb_id": {"$push": "$_id"},
                 }
             },
         ]
@@ -157,7 +166,9 @@ def test_get_s3_input_information_no_glob(mock_s3fs):
     mock_s3fs.return_value = mock_s3fs
 
     s3_paths, s3_file_paths, docdb_ids = get_s3_and_docdb_input_information(
-        data_asset_paths=["bucket/key"], docdb_record_ids=["id1"], file_extension=".nwb"
+        data_asset_paths=["bucket/key"],
+        docdb_record_ids=["id1"],
+        file_extension=".nwb",
     )
 
     assert not s3_paths
@@ -166,7 +177,8 @@ def test_get_s3_input_information_no_glob(mock_s3fs):
 
 
 @patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_and_docdb_input_information"
+    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_"
+    "and_docdb_input_information"
 )
 def test_flat_input_no_parameters(mock_get_s3_info):
     """Tests getting input model with flat list and
@@ -175,8 +187,7 @@ def test_flat_input_no_parameters(mock_get_s3_info):
     mock_get_s3_info.return_value = (
         ["s3/bucket1", "s3/bucket2"],
         ["s3://bucket1/file1.tif", "s3://bucket2/file2.tif"],
-        ["id1", "id2"]
-        
+        ["id1", "id2"],
     )
 
     input_paths = ["s3/bucket1", "s3/bucket2"]
@@ -195,7 +206,8 @@ def test_flat_input_no_parameters(mock_get_s3_info):
 
 
 @patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_and_docdb_input_information"
+    "analysis_pipeline_utils.utils_analysis_dispatch.get_"
+    "s3_and_docdb_input_information"
 )
 def test_flat_input_with_parameters(mock_get_s3_info):
     """Test getting input model with flat
@@ -203,7 +215,7 @@ def test_flat_input_with_parameters(mock_get_s3_info):
     mock_get_s3_info.return_value = (
         ["s3/bucket1", "s3/bucket2"],
         ["s3://bucket1/file1.tif", "s3://bucket2/file2.tif"],
-        ["id1", "id2"]
+        ["id1", "id2"],
     )
 
     input_paths = ["s3/bucket1", "s3/bucket2"]
@@ -229,7 +241,8 @@ def test_flat_input_with_parameters(mock_get_s3_info):
 
 
 @patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_and_docdb_input_information"
+    "analysis_pipeline_utils.utils_analysis_dispatch.get_"
+    "s3_and_docdb_input_information"
 )
 def test_nested_input_no_parameters(mock_get_s3_info):
     """
@@ -239,7 +252,7 @@ def test_nested_input_no_parameters(mock_get_s3_info):
     mock_get_s3_info.return_value = (
         ["s3://bucket1", "s3://bucket2"],
         ["s3://bucket1/file1.tif", "s3://bucket1/file2.tif"],
-        ["id1", "id2"]
+        ["id1", "id2"],
     )
 
     input_paths = [["s3/bucket1", "s3/bucket2"]]  # one group of assets
@@ -258,7 +271,8 @@ def test_nested_input_no_parameters(mock_get_s3_info):
 
 
 @patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_and_docdb_input_information"
+    "analysis_pipeline_utils.utils_analysis_dispatch.get_"
+    "s3_and_docdb_input_information"
 )
 def test_nested_input_with_parameters(mock_get_s3_info):
     """
@@ -268,7 +282,7 @@ def test_nested_input_with_parameters(mock_get_s3_info):
     mock_get_s3_info.return_value = (
         ["s3://bucket1", "s3://bucket2"],
         ["s3://bucket1/file1.tif", "s3://bucket1/file2.tif"],
-        ["id1", "id2"]
+        ["id1", "id2"],
     )
 
     params = [{"param": "a"}, {"param": "b"}]

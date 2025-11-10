@@ -99,8 +99,7 @@ def test_construct_processing_record(mock_query):
 
     # Test data
     analysis_job = AnalysisDispatchModel(
-        s3_location=["s3://test-bucket/test-data"],
-        docdb_record_id=["id1"]
+        s3_location=["s3://test-bucket/test-data"], docdb_record_id=["id1"]
     )
 
     result = construct_processing_record(analysis_job)

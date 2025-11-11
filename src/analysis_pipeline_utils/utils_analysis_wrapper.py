@@ -10,12 +10,13 @@ from pathlib import Path
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
 from aind_data_schema.base import GenericModel
-from pydantic import create_model, Field
+from pydantic import Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
+from analysis_pipeline_utils.utils_analysis_dispatch import docdb_api_client
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -24,6 +25,17 @@ logger = logging.getLogger(__name__)
 
 
 T = TypeVar("T", bound=GenericModel)
+
+
+def get_metadata_record(docdb_id: str) -> dict:
+    """
+    Returns the metadata record the docdb id.
+    Uses the indexed id field in doc db
+    """
+    response = docdb_api_client.retrieve_docdb_records(
+        filter_query={"_id": docdb_id}
+    )
+    return response[0]
 
 
 def make_cli_model(model_cls: Type[T]) -> Type[BaseSettings]:

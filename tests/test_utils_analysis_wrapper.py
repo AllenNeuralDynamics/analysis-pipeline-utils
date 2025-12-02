@@ -17,7 +17,6 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
 from analysis_pipeline_utils.utils_analysis_wrapper import (
     _get_merged_analysis_parameters,
     get_analysis_model_parameters,
-    get_metadata_record,
     make_cli_model,
 )
 
@@ -141,27 +140,3 @@ def test_get_merged_no_parameters() -> None:
             )
 
     assert not merged  # empty, no parameters
-
-
-@patch("analysis_pipeline_utils.utils_analysis_wrapper.docdb_api_client")
-def test_get_metadata_record(mock_client):
-    """
-    Tests getting the metadata record
-    """
-    # Arrange
-    fake_docdb_id = "12345"
-    fake_response = [{"_id": fake_docdb_id, "title": "Test Document"}]
-
-    # Create a mock client with the desired return value
-    mock_client.retrieve_docdb_records.return_value = fake_response
-
-    # Act
-    result = get_metadata_record(fake_docdb_id)
-
-    # Assert
-    mock_client.retrieve_docdb_records.assert_called_once_with(
-        filter_query={"_id": fake_docdb_id}
-    )
-    assert result == fake_response[0]
-    assert result["_id"] == fake_docdb_id
-    assert result["title"] == "Test Document"

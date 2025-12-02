@@ -80,9 +80,13 @@ def get_s3_and_docdb_input_information(
     looking for the file extension if specified and list of
     docdb record ids for each asset
 
+    If file extension is specified and is not found for a data asset,
+    the record is skipped entirely and will not be part of the
+    result list of assets
+
     Parameters
     ----------
-    data_asset_paths: list[str]
+    data_asset_paths: List[str]
         A list of paths to data assets in S3
 
     file_extension : str, optional
@@ -99,7 +103,7 @@ def get_s3_and_docdb_input_information(
     s3_paths: list of str
         A list of S3 bucket paths
 
-    s3_file_paths: list of str
+    s3_file_paths: List[Union[List[str], List[List[str]]]]
         A list of either single S3 file locations (URLs) that match the query
         and the specified file extension or a list of S3 file locations
         if multiple files are returned for the
@@ -107,37 +111,42 @@ def get_s3_and_docdb_input_information(
         Each location is prefixed with "s3://".
 
     docdb_record_ids:
-        A list of docdb record ifs
+        A list of docdb record ids
     """
-    s3_paths = []
     s3_file_paths = []
     s3_file_system = s3fs.S3FileSystem()
-    docdb_ids = []
 
+    if file_extension == "":
+        return data_asset_paths, s3_file_paths, docdb_record_ids
+
+    # if file extension is specified and not found,
+    # the record is skipped entirely,
+    # need to maintain list of records to use
+
+    s3_paths_to_use = []
+    docdb_ids_to_use = []
     for index, location in enumerate(data_asset_paths):
-        if file_extension != "":
-            file_paths = tuple(
-                s3_file_system.glob(f"{location}/**/*{file_extension}")
+        file_paths = tuple(
+            s3_file_system.glob(f"{location}/**/*{file_extension}")
+        )
+        if not file_paths:
+            logging.warning(
+                f"No {file_extension} found in {location} - skipping."
             )
-            if not file_paths:
-                logging.warning(
-                    f"No {file_extension} found in {location} - skipping."
-                )
-                continue
+            continue
 
-            if split_files:
-                for file in file_paths:
-                    s3_file_paths.append(f"s3://{file}")
-            else:
-                s3_file_paths.append([f"s3://{file}" for file in file_paths])
-            logger.info(
-                f"Found {len(file_paths)} *{file_extension} files from s3"
-            )
+        if split_files:
+            for file in file_paths:
+                s3_file_paths.append(f"s3://{file}")
+        else:
+            s3_file_paths.append([f"s3://{file}" for file in file_paths])
+        logger.info(f"Found {len(file_paths)} *{file_extension} files from s3")
 
-        s3_paths.append(location)
-        docdb_ids.append(docdb_record_ids[index])
+        # add records where file extension has been found
+        s3_paths_to_use.append(location)
+        docdb_ids_to_use.append(docdb_record_ids[index])
 
-    return s3_paths, s3_file_paths, docdb_ids
+    return s3_paths_to_use, s3_file_paths, docdb_ids_to_use
 
 
 def get_input_model_list(

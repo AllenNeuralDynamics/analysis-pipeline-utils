@@ -421,7 +421,7 @@ def get_docdb_client(
 
 
 def write_results_and_metadata(
-    process: ps.DataProcess, s3_bucket: str
+    process: ps.DataProcess, s3_bucket: str, dry_run: bool = False
 ) -> None:
     """
     Writes output and copies to s3.
@@ -435,5 +435,6 @@ def write_results_and_metadata(
     metadata, docdb_id = create_results_metadata(process, s3_bucket)
     with open("/results/metadata.nd.json", "w") as f:
         f.write(metadata.model_dump_json(indent=2))
-    copy_results_to_s3(metadata)
-    write_to_docdb(metadata, docdb_id)
+    if not dry_run:
+        copy_results_to_s3(metadata)
+        write_to_docdb(metadata, docdb_id)

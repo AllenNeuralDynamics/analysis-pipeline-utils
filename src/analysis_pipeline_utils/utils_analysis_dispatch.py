@@ -1,8 +1,10 @@
 """
 Functions for analysis dispatcher
 """
-
+import csv
+import json
 import logging
+from pathlib import Path
 from typing import Any, List, Optional, Union
 
 import s3fs
@@ -68,6 +70,108 @@ def get_data_asset_paths_and_docdb_id_from_query(
     docdb_ids = [x["docdb_id"] for x in response]
     return locations, docdb_ids
 
+def read_asset_ids_from_csv(csv_path: Path) -> List[str]:
+    """
+    Read data asset IDs from a CSV file.
+
+    The CSV file must contain a column named ``asset_id``. Rows with empty or
+    missing values in this column are ignored. An error is raised if the column
+    does not exist or if no valid asset IDs are found.
+
+    Parameters
+    ----------
+    csv_path : pathlib.Path
+        Path to the CSV file containing data asset IDs.
+
+    Returns
+    -------
+    list of str
+        List of non-empty data asset ID strings extracted from the CSV file.
+
+    Raises
+    ------
+    ValueError
+        If the CSV file does not contain an ``asset_id`` column or if the column
+        exists but contains no valid (non-empty) values.
+    """
+    with csv_path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+
+        if "asset_id" not in reader.fieldnames:
+            raise ValueError("CSV must contain an 'asset_id' column")
+
+        asset_ids = [
+            row["asset_id"].strip()
+            for row in reader
+            if row.get("asset_id") and row["asset_id"].strip()
+        ]
+
+    if not asset_ids:
+        raise ValueError("Asset id column is empty")
+
+    return asset_ids
+
+def get_data_asset_paths_and_record_ids(
+    input_directory: Path,
+    use_data_asset_csv: bool = False,
+    docdb_query: Union[str, Path, None] = None,
+    group_by: Union[str, None] = None,
+    **kwargs,
+) -> tuple[list[str], list[str]]:
+    """
+    Retrieve a list of data asset paths and record ids
+    based on the provided arguments.
+
+    Parameters
+    ----------
+    use_data_asset_csv: bool, Default False
+        Whether to use a user-provided csv with data asset ids
+
+    docdb_query: Union[str, Path, None], Default None
+        Path to json with query or json string representation
+
+    group_by: Union[str, None], Default None
+        Reference to a single docDB record field to use
+        to group records into jobs. For example 'subject.subject_id
+
+    Returns
+    -------
+    tuple[list of str, list of str]
+        A list of data asset ID strings and record ids
+          that match the provided filters.
+    """
+    if use_data_asset_csv:
+        data_asset_ids_path = tuple(input_directory.glob("*.csv"))
+        if not data_asset_ids_path:
+            raise FileNotFoundError(
+                "Using data asset ids, but no path to csv provided"
+            )
+
+        data_asset_ids = read_asset_ids_from_csv(data_asset_ids_path[0])
+        data_asset_paths, docdb_ids = get_data_asset_paths_and_docdb_id_from_query(
+            query={"external_links.Code Ocean.0": {"$in": data_asset_ids}},
+            group_by=group_by,
+        )
+
+    elif docdb_query:
+        logger.info("Using query")
+        if (
+            isinstance(docdb_query, str)
+            and Path(docdb_query).exists()
+        ):
+            logger.info(
+                f"Query input as json file at path {Path(docdb_query)}"
+            )
+            with open(Path(docdb_query), "r") as f:
+                query = json.load(f)
+        else:
+            query = json.loads(docdb_query)
+
+        logger.info(f"Query {query}")
+        data_asset_paths, docdb_ids = get_data_asset_paths_and_docdb_id_from_query(query, group_by)
+
+    logger.info(f"Returned {len(data_asset_paths)} records")
+    return data_asset_paths, docdb_ids
 
 def get_s3_and_docdb_input_information(
     data_asset_paths: List[str],

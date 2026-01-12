@@ -1,6 +1,7 @@
 """
 Functions for analysis dispatcher
 """
+
 import csv
 import json
 import logging
@@ -70,6 +71,7 @@ def get_data_asset_paths_and_docdb_id_from_query(
     docdb_ids = [x["docdb_id"] for x in response]
     return locations, docdb_ids
 
+
 def read_asset_ids_from_csv(csv_path: Path) -> List[str]:
     """
     Read data asset IDs from a CSV file.
@@ -91,8 +93,8 @@ def read_asset_ids_from_csv(csv_path: Path) -> List[str]:
     Raises
     ------
     ValueError
-        If the CSV file does not contain an ``asset_id`` column or if the column
-        exists but contains no valid (non-empty) values.
+        If the CSV file does not contain an ``asset_id`` column or
+        if the column exists but contains no valid (non-empty) values.
     """
     with csv_path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -110,6 +112,7 @@ def read_asset_ids_from_csv(csv_path: Path) -> List[str]:
         raise ValueError("Asset id column is empty")
 
     return asset_ids
+
 
 def get_data_asset_paths_and_record_ids(
     input_directory: Path,
@@ -148,17 +151,16 @@ def get_data_asset_paths_and_record_ids(
             )
 
         data_asset_ids = read_asset_ids_from_csv(data_asset_ids_path[0])
-        data_asset_paths, docdb_ids = get_data_asset_paths_and_docdb_id_from_query(
-            query={"external_links.Code Ocean.0": {"$in": data_asset_ids}},
-            group_by=group_by,
+        data_asset_paths, docdb_ids = (
+            get_data_asset_paths_and_docdb_id_from_query(
+                query={"external_links.Code Ocean.0": {"$in": data_asset_ids}},
+                group_by=group_by,
+            )
         )
 
     elif docdb_query:
         logger.info("Using query")
-        if (
-            isinstance(docdb_query, str)
-            and Path(docdb_query).exists()
-        ):
+        if isinstance(docdb_query, str) and Path(docdb_query).exists():
             logger.info(
                 f"Query input as json file at path {Path(docdb_query)}"
             )
@@ -168,10 +170,13 @@ def get_data_asset_paths_and_record_ids(
             query = json.loads(docdb_query)
 
         logger.info(f"Query {query}")
-        data_asset_paths, docdb_ids = get_data_asset_paths_and_docdb_id_from_query(query, group_by)
+        data_asset_paths, docdb_ids = (
+            get_data_asset_paths_and_docdb_id_from_query(query, group_by)
+        )
 
     logger.info(f"Returned {len(data_asset_paths)} records")
     return data_asset_paths, docdb_ids
+
 
 def get_s3_and_docdb_input_information(
     data_asset_paths: List[str],

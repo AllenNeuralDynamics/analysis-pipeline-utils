@@ -1,18 +1,20 @@
 """
 Tests functions from analysis dispatch utils
 """
-import pytest
+
 from unittest.mock import patch
+
+import pytest
 
 from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
 from analysis_pipeline_utils.utils_analysis_dispatch import (
-    get_data_asset_paths_and_record_ids,
     get_data_asset_paths_and_docdb_id_from_query,
+    get_data_asset_paths_and_record_ids,
     get_input_model_list,
     get_s3_and_docdb_input_information,
-    read_asset_ids_from_csv
+    read_asset_ids_from_csv,
 )
 
 
@@ -311,33 +313,26 @@ def test_nested_input_with_parameters(mock_get_s3_info):
     assert result[1].docdb_record_id == ["id1", "id2"]
     assert result[1].distributed_parameters == {"param": "b"}
 
+
 def test_read_asset_ids_from_csv_valid(tmp_path):
     """Reads valid asset IDs from CSV"""
     csv_path = tmp_path / "assets.csv"
-    csv_path.write_text(
-        "asset_id,other\n"
-        "id1,foo\n"
-        "id2,bar\n"
-    )
+    csv_path.write_text("asset_id,other\n" "id1,foo\n" "id2,bar\n")
 
     result = read_asset_ids_from_csv(csv_path)
 
     assert result == ["id1", "id2"]
+
 
 def test_read_asset_ids_from_csv_ignores_empty_rows(tmp_path):
     """Ignores empty or whitespace-only asset_id values"""
     csv_path = tmp_path / "assets.csv"
-    csv_path.write_text(
-        "asset_id\n"
-        "id1\n"
-        "\n"
-        "   \n"
-        "id2\n"
-    )
+    csv_path.write_text("asset_id\n" "id1\n" "\n" "   \n" "id2\n")
 
     result = read_asset_ids_from_csv(csv_path)
 
     assert result == ["id1", "id2"]
+
 
 def test_read_asset_ids_from_csv_missing_column(tmp_path):
     """Raises if asset_id column is missing"""
@@ -346,6 +341,7 @@ def test_read_asset_ids_from_csv_missing_column(tmp_path):
 
     with pytest.raises(ValueError, match="asset_id"):
         read_asset_ids_from_csv(csv_path)
+
 
 @patch(
     "analysis_pipeline_utils.utils_analysis_dispatch."
@@ -374,6 +370,7 @@ def test_get_data_asset_paths_from_csv(mock_query, tmp_path):
     assert paths == [["s3://bucket/id1"], ["s3://bucket/id2"]]
     assert ids == ["doc1", "doc2"]
 
+
 def test_get_data_asset_paths_csv_missing(tmp_path):
     """Raises if use_data_asset_csv=True but no CSV exists"""
     with pytest.raises(FileNotFoundError):
@@ -381,6 +378,7 @@ def test_get_data_asset_paths_csv_missing(tmp_path):
             input_directory=tmp_path,
             use_data_asset_csv=True,
         )
+
 
 @patch(
     "analysis_pipeline_utils.utils_analysis_dispatch."
@@ -406,5 +404,3 @@ def test_get_data_asset_paths_csv_with_grouping(mock_query, tmp_path):
 
     assert paths == [["s3://bucket/id1"]]
     assert ids == ["doc1"]
-
-

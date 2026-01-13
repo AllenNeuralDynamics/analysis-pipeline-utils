@@ -259,160 +259,81 @@ def get_s3_and_docdb_input_information(
 
 
 def get_input_model_list(
-    data_asset_paths: Union[List[str], List[List[str]]],
-    docdb_record_ids: Union[List[str], List[List[str]]],
+    data_asset_groups: list[list[str]],
+    docdb_record_id_groups: list[list[str]],
     file_extension: str = "",
     split_files: bool = True,
-    distributed_analysis_parameters: Union[List[dict[str, Any]], None] = None,
+    distributed_analysis_parameters: list[dict[str, Any]] | None = None,
 ) -> list[AnalysisDispatchModel]:
     """
-    Writes the input model with the
-    S3 location from the query and input arguments
+    Create analysis dispatch models from grouped data assets.
 
     Parameters
     ----------
+    data_asset_groups : list[list[str]]
+        Grouped S3 data asset paths. Each inner list represents a single
+        analysis group.
 
-    data_asset_paths: Union[list[str], list[list[str]], None]
-        The data asset paths to get input models for.
-        Either a flat list or nested list of lists.
-
-    docdb_record_ids: Union[list[str], list[list[str]], None]
-        The docdb record ids to get input models for.
-        Either a flat list or nested list of lists.
+    docdb_record_id_groups : list[list[str]]
+        Grouped DocDB record IDs aligned with ``data_asset_groups``.
 
     file_extension : str, optional
-        The file extension to filter for when searching the S3 locations.
-        Defaults to empty, meaning the bucket path
-        will be returned from the query.
+        File extension to search for within each group. If empty, no file
+        discovery is performed.
 
     split_files : bool, optional
-        Whether or not to split files into seperate models
-        or to store in one model as a single list.
+        Whether to split matching files into separate analysis inputs.
 
-    distributed_analysis_parameters: Union[list[dict[str, Any]], None]
-        List of dicts of analysis parameters.
-        The dispatch will compute the product over
-        input data and analysis dict for each in list.
+    distributed_analysis_parameters : list of dict, optional
+        Optional analysis parameter dictionaries. If provided, a model is
+        created for each parameter set per group.
 
     Returns
     -------
-    list: AnalysisDispatchModel
-        Returns a list of input analysis jobs
+    list of AnalysisDispatchModel
+        One or more dispatch models per input group.
     """
 
-    def make_models(
-        s3_buckets: List[str], s3_paths: List[str], docdb_record_ids: List[str]
-    ) -> List[AnalysisDispatchModel]:
-        """
-        Creates input model list
-
-        Parameters
-        ----------
-        s3_buckets: List[str]
-            The paths to s3 buckets
-
-        s3_paths:
-            The paths to files in s3 if file extension
-            specified
-
-        docdb_record_ids: List[str]
-            The docdb ids to be used for querying
-
-        Returns
-        -------
-        List: AnalysisDispatchModel
-            The list of input models
-        """
-        models = []
-        if is_flat:
-            for index, s3_bucket in enumerate(s3_buckets):
-                file_location = [s3_paths[index]] if s3_paths else None
-                if distributed_analysis_parameters:
-                    for parameters in distributed_analysis_parameters:
-                        models.append(
-                            AnalysisDispatchModel(
-                                s3_location=[s3_bucket],
-                                file_location=file_location,
-                                distributed_parameters=parameters,
-                                docdb_record_id=[docdb_record_ids[index]],
-                            )
-                        )
-                else:
-                    models.append(
-                        AnalysisDispatchModel(
-                            s3_location=[s3_bucket],
-                            file_location=file_location,
-                            docdb_record_id=[docdb_record_ids[index]],
-                        )
-                    )
-        else:
-            file_location = s3_paths if s3_paths else None
-            if distributed_analysis_parameters:
-                for parameters in distributed_analysis_parameters:
-                    models.append(
-                        AnalysisDispatchModel(
-                            s3_location=s3_buckets,
-                            file_location=file_location,
-                            distributed_parameters=parameters,
-                            docdb_record_id=docdb_record_ids,
-                        )
-                    )
-            else:
-                models.append(
-                    AnalysisDispatchModel(
-                        s3_location=s3_buckets,
-                        file_location=file_location,
-                        docdb_record_id=docdb_record_ids,
-                    )
-                )
-        return models
-
-    # Normalize to grouped format
-    is_flat = isinstance(data_asset_paths, list) and all(
-        isinstance(i, str) for i in data_asset_paths
+    assert len(data_asset_groups) == len(docdb_record_id_groups), (
+        "data_asset_groups and docdb_record_id_groups "
+        "must be the same length"
     )
 
-    grouped_assets = (
-        [data_asset_paths]
-        if is_flat
-        else (
-            data_asset_paths
-            if all(isinstance(i, list) for i in data_asset_paths)
-            else []
-        )
-    )
+    models: list[AnalysisDispatchModel] = []
 
-    grouped_docdb_record_ids = (
-        [docdb_record_ids]
-        if is_flat
-        else (
-            docdb_record_ids
-            if all(isinstance(i, list) for i in docdb_record_ids)
-            else []
-        )
-    )
-
-    logger.info(
-        "Flat data asset ids list provided"
-        if is_flat
-        else "Nested data asset ids list provided"
-    )
-
-    all_grouped_models = []
-    for index, group in enumerate(grouped_assets):
-        s3_buckets, s3_paths, asset_docdb_record_ids = (
+    for asset_paths, record_ids in zip(
+        data_asset_groups, docdb_record_id_groups
+    ):
+        s3_buckets, s3_paths, metadata_record_ids = (
             get_s3_and_docdb_input_information(
-                data_asset_paths=group,
-                docdb_record_ids=grouped_docdb_record_ids[index],
+                data_asset_paths=asset_paths,
+                docdb_record_ids=record_ids,
                 file_extension=file_extension,
                 split_files=split_files,
             )
         )
+
         if not s3_buckets:
             continue
+        file_location = s3_paths if s3_paths else None
 
-        all_grouped_models.extend(
-            make_models(s3_buckets, s3_paths, asset_docdb_record_ids)
-        )
+        if distributed_analysis_parameters:
+            for params in distributed_analysis_parameters:
+                models.append(
+                    AnalysisDispatchModel(
+                        s3_location=s3_buckets,
+                        file_location=file_location,
+                        docdb_record_id=metadata_record_ids,
+                        distributed_parameters=params,
+                    )
+                )
+        else:
+            models.append(
+                AnalysisDispatchModel(
+                    s3_location=s3_buckets,
+                    file_location=file_location,
+                    docdb_record_id=metadata_record_ids
+                )
+            )
 
-    return all_grouped_models
+    return models

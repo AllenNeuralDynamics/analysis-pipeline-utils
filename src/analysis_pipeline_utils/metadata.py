@@ -35,7 +35,7 @@ def get_metadata_for_records(
     analysis_dispatch_input: AnalysisDispatchModel,
 ) -> List[Dict]:
     """
-    Retrieves metadata from DocDB for records specified 
+    Retrieves metadata from DocDB for records specified
     by analysis dispatch input
 
     Parameters

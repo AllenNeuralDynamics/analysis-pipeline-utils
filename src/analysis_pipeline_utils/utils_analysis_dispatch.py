@@ -30,7 +30,7 @@ docdb_api_client = get_docdb_client(
 
 def get_data_asset_paths_and_docdb_id_from_query(
     query: dict, group_by: Optional[str]
-) -> tuple[List[str], List[str]]:
+) -> tuple[List[List[str]], List[List[str]]]:
     """
     Retrieve data asset paths and docdb record ids based on query passed in.
 
@@ -44,12 +44,12 @@ def get_data_asset_paths_and_docdb_id_from_query(
 
     Returns
     -------
-    List of str
-        A list of data asset paths
+    List[List[str]]
+        A nested list of data asset paths
         that match the provided query criteria.
 
-    List of str
-        A list of docdb record ids that match the query
+    List[List[str]]
+        A nested list of docdb record ids that match the query
 
     """
 

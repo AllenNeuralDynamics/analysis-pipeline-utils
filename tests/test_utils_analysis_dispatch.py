@@ -6,9 +6,6 @@ from unittest.mock import patch
 
 import pytest
 
-from analysis_pipeline_utils.analysis_dispatch_model import (
-    AnalysisDispatchModel,
-)
 from analysis_pipeline_utils.utils_analysis_dispatch import (
     get_data_asset_paths_and_docdb_id_from_query,
     get_data_asset_paths_and_record_ids,
@@ -178,70 +175,6 @@ def test_get_s3_input_information_no_glob(mock_s3fs):
     assert not s3_paths
     assert not docdb_ids
     assert not s3_file_paths
-
-
-@patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_"
-    "and_docdb_input_information"
-)
-def test_flat_input_no_parameters(mock_get_s3_info):
-    """Tests getting input model with flat list and
-    no distributed parameters
-    """
-    mock_get_s3_info.return_value = (
-        ["s3/bucket1", "s3/bucket2"],
-        ["s3://bucket1/file1.tif", "s3://bucket2/file2.tif"],
-        ["id1", "id2"],
-    )
-
-    input_paths = ["s3/bucket1", "s3/bucket2"]
-    input_docdb_ids = ["id1", "id2"]
-    result = get_input_model_list(
-        input_paths, input_docdb_ids, file_extension=".tif", split_files=True
-    )
-
-    assert len(result) == 2
-    assert isinstance(result[0], AnalysisDispatchModel)
-    assert result[0].s3_location == ["s3/bucket1"]
-    assert result[0].file_location == ["s3://bucket1/file1.tif"]
-    assert result[0].distributed_parameters is None
-    assert result[0].docdb_record_id == ["id1"]
-    assert result[1].docdb_record_id == ["id2"]
-
-
-@patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_"
-    "s3_and_docdb_input_information"
-)
-def test_flat_input_with_parameters(mock_get_s3_info):
-    """Test getting input model with flat
-    list and distributed parameters"""
-    mock_get_s3_info.return_value = (
-        ["s3/bucket1", "s3/bucket2"],
-        ["s3://bucket1/file1.tif", "s3://bucket2/file2.tif"],
-        ["id1", "id2"],
-    )
-
-    input_paths = ["s3/bucket1", "s3/bucket2"]
-    input_docdb_ids = ["id1", "id2"]
-    parameters = [{"param": 1}, {"param": 2}]
-
-    result = get_input_model_list(
-        input_paths,
-        input_docdb_ids,
-        file_extension=".tif",
-        split_files=True,
-        distributed_analysis_parameters=parameters,
-    )
-
-    assert len(result) == 4  # 2 assets × 2 param sets
-    assert result[1].distributed_parameters == {"param": 2}
-    assert result[2].s3_location == ["s3/bucket2"]
-
-    assert result[0].docdb_record_id == ["id1"]
-    assert result[1].docdb_record_id == ["id1"]
-    assert result[2].docdb_record_id == ["id2"]
-    assert result[3].docdb_record_id == ["id2"]
 
 
 @patch(

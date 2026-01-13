@@ -212,7 +212,7 @@ def get_s3_and_docdb_input_information(
     s3_paths: list of str
         A list of S3 bucket paths
 
-    s3_file_paths: List[Union[List[str], List[List[str]]]]
+    s3_file_paths: Union[List[str], List[List[str]]]
         A list of either single S3 file locations (URLs) that match the query
         and the specified file extension or a list of S3 file locations
         if multiple files are returned for the

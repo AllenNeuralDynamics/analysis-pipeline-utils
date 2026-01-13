@@ -259,22 +259,22 @@ def get_s3_and_docdb_input_information(
 
 
 def get_input_model_list(
-    data_asset_groups: list[list[str]],
-    docdb_record_id_groups: list[list[str]],
+    data_asset_groups: List[List[str]],
+    docdb_record_id_groups: List[List[str]],
     file_extension: str = "",
     split_files: bool = True,
-    distributed_analysis_parameters: list[dict[str, Any]] | None = None,
-) -> list[AnalysisDispatchModel]:
+    distributed_analysis_parameters: List[dict[str, Any]] | None = None,
+) -> List[AnalysisDispatchModel]:
     """
     Create analysis dispatch models from grouped data assets.
 
     Parameters
     ----------
-    data_asset_groups : list[list[str]]
+    data_asset_groups : List[List[str]]
         Grouped S3 data asset paths. Each inner list represents a single
         analysis group.
 
-    docdb_record_id_groups : list[list[str]]
+    docdb_record_id_groups : List[List[str]]
         Grouped DocDB record IDs aligned with ``data_asset_groups``.
 
     file_extension : str, optional
@@ -284,7 +284,7 @@ def get_input_model_list(
     split_files : bool, optional
         Whether to split matching files into separate analysis inputs.
 
-    distributed_analysis_parameters : list of dict, optional
+    distributed_analysis_parameters : List of dict, optional
         Optional analysis parameter dictionaries. If provided, a model is
         created for each parameter set per group.
 
@@ -299,7 +299,7 @@ def get_input_model_list(
         "must be the same length"
     )
 
-    models: list[AnalysisDispatchModel] = []
+    models: List[AnalysisDispatchModel] = []
 
     for asset_paths, record_ids in zip(
         data_asset_groups, docdb_record_id_groups
@@ -332,7 +332,7 @@ def get_input_model_list(
                 AnalysisDispatchModel(
                     s3_location=s3_buckets,
                     file_location=file_location,
-                    docdb_record_id=metadata_record_ids
+                    docdb_record_id=metadata_record_ids,
                 )
             )
 

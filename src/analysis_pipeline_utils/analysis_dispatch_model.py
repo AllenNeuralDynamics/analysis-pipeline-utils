@@ -32,3 +32,9 @@ class AnalysisDispatchModel(BaseModel):
             "distributed by the job dispatcher"
         ),
     )
+
+    docdb_record_id: List[str] = Field(
+        ...,
+        title="Docdb record id",
+        description=("Docdb record ids to use for " "getting metadata"),
+    )

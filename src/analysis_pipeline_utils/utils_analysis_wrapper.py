@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
 from aind_data_schema.base import GenericModel
-from pydantic import create_model, Field
+from pydantic import Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from analysis_pipeline_utils.analysis_dispatch_model import (

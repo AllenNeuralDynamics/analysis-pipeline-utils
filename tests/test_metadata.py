@@ -21,6 +21,7 @@ from analysis_pipeline_utils.metadata import (
     get_code_metadata_from_git,
     get_data_asset_url,
     get_docdb_records,
+    get_metadata_for_records,
 )
 
 
@@ -99,9 +100,7 @@ def test_construct_processing_record(mock_query):
 
     # Test data
     analysis_job = AnalysisDispatchModel(
-        s3_location=["s3://test-bucket/test-data"],
-        asset_id=["test-asset-id"],
-        asset_name=["test-asset-name"],
+        s3_location=["s3://test-bucket/test-data"], docdb_record_id=["id1"]
     )
 
     result = construct_processing_record(analysis_job)
@@ -221,3 +220,73 @@ def test_get_docdb_record_single(mock_prefix, mock_get_client):
     processing = Mock()
     result = get_docdb_records(processing)
     assert result == ["record"]
+
+
+@patch("analysis_pipeline_utils.metadata.get_record_from_docdb")
+@patch("analysis_pipeline_utils.metadata.get_docdb_client")
+def test_get_metadata_for_records_all_found(mock_get_client, mock_get_record):
+    """Tests fetching metadata when all records are found"""
+    mock_get_client.return_value = Mock()
+
+    # Mock returned records
+    mock_get_record.side_effect = [
+        {"_id": "id1", "field": "value1"},
+        {"_id": "id2", "field": "value2"},
+    ]
+
+    analysis_job = AnalysisDispatchModel(
+        s3_location=[],
+        docdb_record_id=["id1", "id2"],
+    )
+
+    result = get_metadata_for_records(analysis_job)
+
+    assert result == [
+        {"_id": "id1", "field": "value1"},
+        {"_id": "id2", "field": "value2"},
+    ]
+    assert mock_get_record.call_count == 2
+
+
+@patch("analysis_pipeline_utils.metadata.get_record_from_docdb")
+@patch("analysis_pipeline_utils.metadata.get_docdb_client")
+def test_get_metadata_for_records_missing_record(
+    mock_get_client, mock_get_record
+):
+    """Tests fetching metadata when some records are missing"""
+    mock_get_client.return_value = Mock()
+
+    # Second record is missing
+    mock_get_record.side_effect = [
+        {"_id": "id1", "field": "value1"},
+        None,
+    ]
+
+    analysis_job = AnalysisDispatchModel(
+        s3_location=[],
+        docdb_record_id=["id1", "id2"],
+    )
+
+    result = get_metadata_for_records(analysis_job)
+
+    # Only the found record should be returned
+    assert result == [{"_id": "id1", "field": "value1"}]
+    assert mock_get_record.call_count == 2
+
+
+@patch("analysis_pipeline_utils.metadata.get_record_from_docdb")
+@patch("analysis_pipeline_utils.metadata.get_docdb_client")
+def test_get_metadata_for_records_none_found(mock_get_client, mock_get_record):
+    """Tests fetching metadata when no records are found"""
+    mock_get_client.return_value = Mock()
+    mock_get_record.return_value = None
+
+    analysis_job = AnalysisDispatchModel(
+        s3_location=[],
+        docdb_record_id=["id1", "id2"],
+    )
+
+    result = get_metadata_for_records(analysis_job)
+
+    assert result == []
+    assert mock_get_record.call_count == 2

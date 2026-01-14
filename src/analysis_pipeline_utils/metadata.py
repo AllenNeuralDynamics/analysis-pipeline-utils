@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 import aind_data_schema.core.processing as ps
 from aind_data_access_api.document_db import MetadataDbClient
+from aind_data_access_api.utils import get_record_from_docdb
 from aind_data_schema.components.identifiers import CombinedData, DataAsset
 from aind_data_schema.core.metadata import Metadata
 from codeocean import CodeOcean
@@ -26,7 +27,44 @@ from .result_files import (
     processing_prefix,
 )
 
+
 PARAM_PREFIX = "param_"
+
+
+def get_metadata_for_records(
+    analysis_dispatch_input: AnalysisDispatchModel,
+) -> List[Dict]:
+    """
+    Retrieves metadata from DocDB for records specified
+    by analysis dispatch input
+
+    Parameters
+    ----------
+    analysis_dispatch_input: AnalysisDispatchModel
+        The analysis dispatch input to fetch metadata for
+
+    Returns
+    -------
+    List[Dict]
+
+    The list of metadata dictionaries for each record in
+    the dispatch input
+    """
+    record_ids = analysis_dispatch_input.docdb_record_id
+    metadata_records = []
+    docdb_client = get_docdb_client()
+
+    for record_id in record_ids:
+        record = get_record_from_docdb(docdb_client, record_id)
+        if not record:
+            logging.warning(
+                f"No record found for id {record_id}. Skipping adding this"
+            )
+            continue
+
+        metadata_records.append(record)
+
+    return metadata_records
 
 
 def extract_parameters(

@@ -4,13 +4,14 @@ Tests functions from analysis dispatch utils
 
 from unittest.mock import patch
 
-from analysis_pipeline_utils.analysis_dispatch_model import (
-    AnalysisDispatchModel,
-)
+import pytest
+
 from analysis_pipeline_utils.utils_analysis_dispatch import (
-    get_data_asset_paths_from_query,
+    get_data_asset_paths_and_docdb_id_from_query,
+    get_data_asset_paths_and_record_ids,
     get_input_model_list,
-    get_s3_input_information,
+    get_s3_and_docdb_input_information,
+    read_asset_ids_from_csv,
 )
 
 
@@ -24,14 +25,21 @@ def test_get_data_asset_ids_from_query(mock_docdb_client):
         {
             "_id": "group1",
             "asset_location": ["id1/path/to/bucket", "id2/path/to/bucket"],
+            "docdb_id": "id1",
         },
-        {"_id": "group2", "asset_location": ["id3/path/to/bucket"]},
+        {
+            "_id": "group2",
+            "asset_location": ["id3/path/to/bucket"],
+            "docdb_id": "id2",
+        },
     ]
 
     query = {"experiment_type": "behavior"}
     group_by = "session"
 
-    result = get_data_asset_paths_from_query(query, group_by)
+    result_paths, result_ids = get_data_asset_paths_and_docdb_id_from_query(
+        query, group_by
+    )
 
     # Check that the mock was called correctly
     mock_docdb_client.aggregate_docdb_records.assert_called_once_with(
@@ -41,26 +49,34 @@ def test_get_data_asset_ids_from_query(mock_docdb_client):
                 "$group": {
                     "_id": "$session",
                     "asset_location": {"$push": "$location"},
+                    "docdb_id": {"$push": "$_id"},
                 }
             },
         ]
     )
 
     # Check the returned data
-    assert result == [
+    assert result_paths == [
         ["id1/path/to/bucket", "id2/path/to/bucket"],
         ["id3/path/to/bucket"],
     ]
+    assert result_ids == ["id1", "id2"]
 
 
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.docdb_api_client")
 def test_get_data_asset_ids_no_group(mock_docdb_client):
     """Tests getting data asset ids with no grouping"""
     mock_docdb_client.aggregate_docdb_records.return_value = [
-        {"_id": "some_id", "asset_location": ["id4/path/to/bucket"]}
+        {
+            "_id": "some_id",
+            "asset_location": ["id4/path/to/bucket"],
+            "docdb_id": "some_id",
+        }
     ]
 
-    result = get_data_asset_paths_from_query({"a": 1}, group_by=None)
+    result_path, result_id = get_data_asset_paths_and_docdb_id_from_query(
+        {"a": 1}, group_by=None
+    )
 
     mock_docdb_client.aggregate_docdb_records.assert_called_once_with(
         pipeline=[
@@ -69,12 +85,14 @@ def test_get_data_asset_ids_no_group(mock_docdb_client):
                 "$group": {
                     "_id": "$_id",
                     "asset_location": {"$push": "$location"},
+                    "docdb_id": {"$push": "$_id"},
                 }
             },
         ]
     )
 
-    assert result == [["id4/path/to/bucket"]]
+    assert result_path == [["id4/path/to/bucket"]]
+    assert result_id == ["some_id"]
 
 
 @patch("s3fs.S3FileSystem")
@@ -86,8 +104,9 @@ def test_get_s3_input_information_split_true(mock_s3fs):
     ]
     mock_s3fs.return_value = mock_s3fs
 
-    s3_paths, s3_file_paths = get_s3_input_information(
+    s3_paths, s3_file_paths, docdb_ids = get_s3_and_docdb_input_information(
         data_asset_paths=["bucket/key"],
+        docdb_record_ids=["id1"],
         file_extension=".tif",
         split_files=True,
     )
@@ -97,6 +116,7 @@ def test_get_s3_input_information_split_true(mock_s3fs):
         "s3://bucket/key/file1.tif",
         "s3://bucket/key/file2.tif",
     ]
+    assert docdb_ids == ["id1"]
     mock_s3fs.glob.assert_called_once_with("bucket/key/**/*.tif")
 
 
@@ -109,8 +129,9 @@ def test_get_s3_input_information_split_false(mock_s3fs):
     ]
     mock_s3fs.return_value = mock_s3fs
 
-    s3_paths, s3_file_paths = get_s3_input_information(
+    s3_paths, s3_file_paths, docdb_ids = get_s3_and_docdb_input_information(
         data_asset_paths=["bucket/key"],
+        docdb_record_ids=["id1"],
         file_extension=".tif",
         split_files=False,
     )
@@ -119,6 +140,7 @@ def test_get_s3_input_information_split_false(mock_s3fs):
     assert s3_file_paths == [
         ["s3://bucket/key/file1.tif", "s3://bucket/key/file2.tif"]
     ]
+    assert docdb_ids == ["id1"]
     mock_s3fs.glob.assert_called_once_with("bucket/key/**/*.tif")
 
 
@@ -128,11 +150,13 @@ def test_get_s3_input_information_no_files(mock_s3fs):
     mock_s3fs.glob.return_value = []
     mock_s3fs.return_value = mock_s3fs
 
-    s3_paths, s3_file_paths = get_s3_input_information(
+    s3_paths, s3_file_paths, docdb_ids = get_s3_and_docdb_input_information(
         data_asset_paths=["bucket/key"],
+        docdb_record_ids=["id1"],
     )
 
     assert s3_paths == ["bucket/key"]
+    assert docdb_ids == ["id1"]
     assert not s3_file_paths
 
 
@@ -142,67 +166,20 @@ def test_get_s3_input_information_no_glob(mock_s3fs):
     mock_s3fs.glob.return_value = []
     mock_s3fs.return_value = mock_s3fs
 
-    s3_paths, s3_file_paths = get_s3_input_information(
-        data_asset_paths=["bucket/key"], file_extension=".nwb"
+    s3_paths, s3_file_paths, docdb_ids = get_s3_and_docdb_input_information(
+        data_asset_paths=["bucket/key"],
+        docdb_record_ids=["id1"],
+        file_extension=".nwb",
     )
 
     assert not s3_paths
+    assert not docdb_ids
     assert not s3_file_paths
 
 
 @patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_input_information"
-)
-def test_flat_input_no_parameters(mock_get_s3_info):
-    """Tests getting input model with flat list and
-    no distributed parameters
-    """
-    mock_get_s3_info.return_value = (
-        ["s3/bucket1", "s3/bucket2"],
-        ["s3://bucket1/file1.tif", "s3://bucket2/file2.tif"],
-    )
-
-    input_paths = ["s3/bucket1", "s3/bucket2"]
-
-    result = get_input_model_list(
-        input_paths, file_extension=".tif", split_files=True
-    )
-
-    assert len(result) == 2
-    assert isinstance(result[0], AnalysisDispatchModel)
-    assert result[0].s3_location == ["s3/bucket1"]
-    assert result[0].file_location == ["s3://bucket1/file1.tif"]
-    assert result[0].distributed_parameters is None
-
-
-@patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_input_information"
-)
-def test_flat_input_with_parameters(mock_get_s3_info):
-    """Test getting input model with flat
-    list and distributed parameters"""
-    mock_get_s3_info.return_value = (
-        ["s3/bucket1", "s3/bucket2"],
-        ["s3://bucket1/file1.tif", "s3://bucket2/file2.tif"],
-    )
-
-    input_paths = ["s3/bucket1", "s3/bucket2"]
-    parameters = [{"param": 1}, {"param": 2}]
-
-    result = get_input_model_list(
-        input_paths,
-        file_extension=".tif",
-        split_files=True,
-        distributed_analysis_parameters=parameters,
-    )
-
-    assert len(result) == 4  # 2 assets × 2 param sets
-    assert result[1].distributed_parameters == {"param": 2}
-    assert result[2].s3_location == ["s3/bucket2"]
-
-
-@patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_input_information"
+    "analysis_pipeline_utils.utils_analysis_dispatch.get_"
+    "s3_and_docdb_input_information"
 )
 def test_nested_input_no_parameters(mock_get_s3_info):
     """
@@ -212,11 +189,13 @@ def test_nested_input_no_parameters(mock_get_s3_info):
     mock_get_s3_info.return_value = (
         ["s3://bucket1", "s3://bucket2"],
         ["s3://bucket1/file1.tif", "s3://bucket1/file2.tif"],
+        ["id1", "id2"],
     )
 
     input_paths = [["s3/bucket1", "s3/bucket2"]]  # one group of assets
+    input_ids = [["id1", "id2"]]
     result = get_input_model_list(
-        input_paths, file_extension=".tif", split_files=False
+        input_paths, input_ids, file_extension=".tif", split_files=False
     )
 
     assert len(result) == 1  # One group
@@ -225,10 +204,12 @@ def test_nested_input_no_parameters(mock_get_s3_info):
         "s3://bucket1/file1.tif",
         "s3://bucket1/file2.tif",
     ]
+    assert result[0].docdb_record_id == ["id1", "id2"]
 
 
 @patch(
-    "analysis_pipeline_utils.utils_analysis_dispatch.get_s3_input_information"
+    "analysis_pipeline_utils.utils_analysis_dispatch.get_"
+    "s3_and_docdb_input_information"
 )
 def test_nested_input_with_parameters(mock_get_s3_info):
     """
@@ -238,12 +219,15 @@ def test_nested_input_with_parameters(mock_get_s3_info):
     mock_get_s3_info.return_value = (
         ["s3://bucket1", "s3://bucket2"],
         ["s3://bucket1/file1.tif", "s3://bucket1/file2.tif"],
+        ["id1", "id2"],
     )
 
     params = [{"param": "a"}, {"param": "b"}]
     input_paths = [["s3://bucket1", "s3://bucket2"]]  # one group of assets
+    input_ids = [["id1", "id2"]]
     result = get_input_model_list(
         input_paths,
+        input_ids,
         file_extension=".tif",
         split_files=False,
         distributed_analysis_parameters=params,
@@ -256,5 +240,100 @@ def test_nested_input_with_parameters(mock_get_s3_info):
         "s3://bucket1/file1.tif",
         "s3://bucket1/file2.tif",
     ]
+    assert result[0].docdb_record_id == ["id1", "id2"]
+
     assert result[1].s3_location == ["s3://bucket1", "s3://bucket2"]
+    assert result[1].docdb_record_id == ["id1", "id2"]
     assert result[1].distributed_parameters == {"param": "b"}
+
+
+def test_read_asset_ids_from_csv_valid(tmp_path):
+    """Reads valid asset IDs from CSV"""
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text("asset_id,other\n" "id1,foo\n" "id2,bar\n")
+
+    result = read_asset_ids_from_csv(csv_path)
+
+    assert result == ["id1", "id2"]
+
+
+def test_read_asset_ids_from_csv_ignores_empty_rows(tmp_path):
+    """Ignores empty or whitespace-only asset_id values"""
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text("asset_id\n" "id1\n" "\n" "   \n" "id2\n")
+
+    result = read_asset_ids_from_csv(csv_path)
+
+    assert result == ["id1", "id2"]
+
+
+def test_read_asset_ids_from_csv_missing_column(tmp_path):
+    """Raises if asset_id column is missing"""
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text("wrong_col\nid1\n")
+
+    with pytest.raises(ValueError, match="asset_id"):
+        read_asset_ids_from_csv(csv_path)
+
+
+@patch(
+    "analysis_pipeline_utils.utils_analysis_dispatch."
+    "get_data_asset_paths_and_docdb_id_from_query"
+)
+def test_get_data_asset_paths_from_csv(mock_query, tmp_path):
+    """Uses CSV asset IDs to construct DocDB query"""
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text("asset_id\nid1\nid2\n")
+
+    mock_query.return_value = (
+        [["s3://bucket/id1"], ["s3://bucket/id2"]],
+        ["doc1", "doc2"],
+    )
+
+    paths, ids = get_data_asset_paths_and_record_ids(
+        input_directory=tmp_path,
+        use_data_asset_csv=True,
+    )
+
+    mock_query.assert_called_once_with(
+        query={"external_links.Code Ocean.0": {"$in": ["id1", "id2"]}},
+        group_by=None,
+    )
+
+    assert paths == [["s3://bucket/id1"], ["s3://bucket/id2"]]
+    assert ids == ["doc1", "doc2"]
+
+
+def test_get_data_asset_paths_csv_missing(tmp_path):
+    """Raises if use_data_asset_csv=True but no CSV exists"""
+    with pytest.raises(FileNotFoundError):
+        get_data_asset_paths_and_record_ids(
+            input_directory=tmp_path,
+            use_data_asset_csv=True,
+        )
+
+
+@patch(
+    "analysis_pipeline_utils.utils_analysis_dispatch."
+    "get_data_asset_paths_and_docdb_id_from_query"
+)
+def test_get_data_asset_paths_csv_with_grouping(mock_query, tmp_path):
+    """Passes group_by through correctly when using CSV"""
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text("asset_id\nid1\n")
+
+    mock_query.return_value = ([["s3://bucket/id1"]], ["doc1"])
+
+    paths, ids = get_data_asset_paths_and_record_ids(
+        input_directory=tmp_path,
+        use_data_asset_csv=True,
+        group_by="subject.subject_id",
+    )
+
+    mock_query.assert_called_once_with(
+        query={"external_links.Code Ocean.0": {"$in": ["id1"]}},
+        group_by="subject.subject_id",
+    )
+
+    assert paths == [["s3://bucket/id1"]]
+    assert ids == ["doc1"]

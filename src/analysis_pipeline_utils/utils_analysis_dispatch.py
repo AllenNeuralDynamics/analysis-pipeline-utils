@@ -6,7 +6,7 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, Iterator, List, Optional, Union
 
 from s3fs import S3FileSystem
 
@@ -341,7 +341,7 @@ def get_input_model_list(
     file_extension: str = "",
     split_files: bool = True,
     distributed_analysis_parameters: Optional[List[dict[str, Any]]] = None,
-) -> List[AnalysisDispatchModel]:
+) -> Iterator[AnalysisDispatchModel]:
     """
     Expand dispatch models with optional file discovery and parameter distribution.
 
@@ -369,14 +369,10 @@ def get_input_model_list(
 
     Returns
     -------
-    List[AnalysisDispatchModel]
+    Iterator[AnalysisDispatchModel]
         Expanded list of dispatch models. Cardinality is determined by the
         product of input records x file matches (if split) x parameter sets.
     """
-
-
-    models: List[AnalysisDispatchModel] = []
-
     for record in records:
         if file_extension:
             file_records = get_asset_file_path_records(
@@ -389,9 +385,6 @@ def get_input_model_list(
         for record in file_records:
             if distributed_analysis_parameters:
                 for params in distributed_analysis_parameters:
-                    models.append(
-                        record.model_copy(update={"distributed_parameters": params})
-                    )
+                    yield record.model_copy(update={"distributed_parameters": params})
             else:
-                models.append(record)
-    return models
+                yield record

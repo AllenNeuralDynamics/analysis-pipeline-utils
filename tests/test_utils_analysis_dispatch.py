@@ -178,6 +178,7 @@ def test_get_input_model_list_with_parameters(mock_get_files):
         split_files=False,
         distributed_analysis_parameters=params,
     )
+    result = list(result)
 
     assert len(result) == 2
     assert result[0].distributed_parameters == {"p": 1}
@@ -202,6 +203,7 @@ def test_get_input_model_list_skips_empty_file_records(mock_get_files):
         file_extension=".tif",
         split_files=False,
     )
+    result = list(result)
 
     assert result == []
 
@@ -221,6 +223,7 @@ def test_get_input_model_list_no_extension_no_parameters():
     ]
 
     result = get_input_model_list(records)
+    result = list(result)
 
     assert len(result) == 2
     assert result[0].s3_location == ["bucket/a"]

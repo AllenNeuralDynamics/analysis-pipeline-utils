@@ -37,3 +37,7 @@ class AnalysisDispatchModel(BaseModel):
         description="For grouped assets, the shared metadata fields that define the group.",
     )
 
+    query: Optional[str] = Field(
+        None,
+        description="The query used to retrieve the data assets from DocDB.",
+    )

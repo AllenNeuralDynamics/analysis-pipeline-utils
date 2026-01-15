@@ -38,24 +38,46 @@ def query_data_assets(
     drop_null_groups: bool = True,
 ) -> List[str]:
     """
-    Retrieve data asset paths and docdb record ids based on query passed in.
+    Query DocDB for data assets and build aggregation pipeline.
+
+    Constructs and executes a MongoDB aggregation pipeline to retrieve and
+    optionally group data asset records from DocDB.
 
     Parameters
     ----------
     query : dict
-        A dictionary representing the query criteria used to filter data assets
+        A dictionary representing the query criteria used to filter data assets.
 
-    group_by: Optional[List[str]], Default None
-        A list of docdb record fields to use to group records into jobs.
+    group_by : Optional[List[str]], default None
+        A list of DocDB record fields to group records by. If None, no grouping
+        is performed and records are projected as-is.
 
-    filter_obsolete: Optional[str], Default None
-        A docdb record field to use to filter obsolete records.
-        If provided, records will be sorted by this field in descending order,
-        and only the most recent record in each group will be retained.
+    filter_obsolete : Optional[str], default None
+        A DocDB record field to use to filter obsolete records. If provided,
+        records will be sorted by this field in descending order, and only the
+        most recent record in each group will be retained.
+
+    filter_by : Optional[str], default None
+        Fields to group by when filtering obsolete records. Required if
+        ``filter_obsolete`` is provided.
+
+    unwind_list_fields : Optional[List[str]], default None
+        List of fields to unwind (flatten) before grouping. Useful for
+        normalizing array-type fields.
+
+    drop_null_groups : bool, default True
+        If True, filter out records where grouping fields are None.
 
     Returns
     -------
+    List[dict]
+        A list of aggregation results. Each dict contains ``s3_location``,
+        ``docdb_record_id``, and optionally ``group_metadata`` fields.
 
+    Raises
+    ------
+    ValueError
+        If ``filter_obsolete`` is provided without ``filter_by``.
     """
     pipeline = [{"$match": query}]
 
@@ -172,21 +194,41 @@ def get_data_asset_records(
     **query_args,
 ) -> List[AnalysisDispatchModel]:
     """
-    Retrieve a list of data asset paths and record ids
-    based on the provided arguments.
+    Retrieve a list of data asset records from DocDB or CSV.
+
+    Loads asset IDs from a CSV file or queries DocDB directly, then returns
+    a list of AnalysisDispatchModel instances.
 
     Parameters
     ----------
-    use_data_asset_csv: bool, Default False
-        Whether to use a user-provided csv with data asset ids
+    input_directory : Path
+        Directory containing optional CSV file or query files.
 
-    docdb_query: Union[str, Path, None], Default None
-        Path to json with query or json string representation
+    use_data_asset_csv : bool, default False
+        If True, load asset IDs from the first CSV file found in
+        ``input_directory`` and query DocDB for those assets.
+
+    docdb_query : Union[str, Path, None], default None
+        Either a path to a JSON file containing a DocDB query, or a JSON
+        string representation of the query. Only used if
+        ``use_data_asset_csv`` is False.
+
+    **query_args
+        Additional keyword arguments to pass to ``query_data_assets()``.
+        Common examples: ``group_by``, ``filter_obsolete``, ``filter_by``.
 
     Returns
     -------
-    records: List[AnalysisDispatchModel]
+    List[AnalysisDispatchModel]
         A list of analysis dispatch models representing input data assets.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``use_data_asset_csv`` is True but no CSV file is found in
+        ``input_directory``.
+    ValueError
+        If neither ``use_data_asset_csv`` nor ``docdb_query`` is provided.
     """
     if use_data_asset_csv:
         data_asset_ids_path = tuple(input_directory.glob("*.csv"))
@@ -224,30 +266,36 @@ def get_asset_file_path_records(
     split_files: bool = False,
 ) -> List[AnalysisDispatchModel]:
     """
-    Returns tuple of list of s3 buckets, list of s3 paths,
-    looking for the file extension if specified and list of
-    docdb record ids for each asset
+    Discover S3 files within data assets and return updated dispatch models.
 
-    If file extension is specified and is not found for a data asset,
-    the record is skipped entirely and will not be part of the
-    result list of assets
+    Searches each S3 location in the record for files matching the specified
+    extension. Assets with no matching files are skipped entirely. If files
+    are found, the record's ``file_location`` field is updated with full
+    S3 paths (prefixed with ``s3://``).
 
     Parameters
     ----------
     record : AnalysisDispatchModel
-        An analysis dispatch model, representing input data assets.
+        An analysis dispatch model representing input data assets.
 
     file_extension : str
-        The file extension to search for in each data asset.
+        The file extension to search for (e.g., ``.tif``, ``.nwb``).
 
-    split_files : bool
-        Whether or not to split multiple matched files into separate models
-        or to store in one model as a single list.
+    split_files : bool, default False
+        If True, return one model per matched file. If False, all matched
+        files are collected into a single list in one model.
 
     Returns
     -------
     List[AnalysisDispatchModel]
-        A list of analysis dispatch models with updated file locations.
+        A list of models with updated ``file_location`` fields. Empty list
+        if no files match the extension.
+
+    Raises
+    ------
+    ValueError
+        If ``split_files`` is True and the record contains multiple grouped
+        assets (i.e., ``len(s3_location) > 1``).
     """
     s3_file_paths = []
 
@@ -295,28 +343,35 @@ def get_input_model_list(
     distributed_analysis_parameters: Optional[List[dict[str, Any]]] = None,
 ) -> List[AnalysisDispatchModel]:
     """
-    Create analysis dispatch models from grouped data assets.
+    Expand dispatch models with optional file discovery and parameter distribution.
+
+    For each input record, optionally discovers matching S3 files and/or
+    expands the model for each provided parameter set, resulting in one or
+    more output models per input record.
 
     Parameters
     ----------
     records : List[AnalysisDispatchModel]
         A list of analysis dispatch models representing input data assets.
 
-    file_extension : str, optional
-        File extension to search for within each group. If empty, no file
-        discovery is performed.
+    file_extension : str, default ""
+        File extension to search for within each asset (e.g., ``.tif``).
+        If empty, no file discovery is performed.
 
-    split_files : bool, optional
-        Whether to split matching files into separate analysis inputs.
+    split_files : bool, default True
+        If True and ``file_extension`` is provided, return one model per
+        matched file. If False, group all files per asset in a single model.
 
-    distributed_analysis_parameters : List of dict, optional
-        Optional analysis parameter dictionaries. If provided, a model is
-        created for each parameter set per group.
+    distributed_analysis_parameters : Optional[List[dict[str, Any]]], default None
+        Optional list of parameter dictionaries. If provided, each record is
+        expanded into multiple models, one per parameter set, with the
+        ``distributed_parameters`` field populated accordingly.
 
     Returns
     -------
-    list of AnalysisDispatchModel
-        One or more dispatch models per input group.
+    List[AnalysisDispatchModel]
+        Expanded list of dispatch models. Cardinality is determined by the
+        product of input records x file matches (if split) x parameter sets.
     """
 
 

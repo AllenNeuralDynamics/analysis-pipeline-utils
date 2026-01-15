@@ -44,8 +44,8 @@ def test_make_cli_model() -> None:
     assert issubclass(cli_model_class, BaseSettings)
     assert cli_model_class.__name__ == "MockModelCLI"
 
-    # Instantiate the CLI model (empty because all fields optional)
-    cli_model = cli_model_class()
+    # Instantiate the CLI model without pulling in args
+    cli_model = cli_model_class.model_construct()
 
     # Compare fields keys on the class
     model_fields = set(MockModel.model_fields.keys())
@@ -76,7 +76,7 @@ def test_get_analysis_model_parameters() -> None:
     fake_path = Path("/fake/path/analysis_parameters.json")
 
     cli_cls = make_cli_model(MockModel)
-    cli_model = cli_cls()
+    cli_model = cli_cls.model_construct()
 
     with patch("builtins.open", mock_open(read_data=mock_file_data)):
         with patch.object(Path, "exists", return_value=True):
@@ -128,7 +128,7 @@ def test_get_merged_no_parameters() -> None:
     fake_path = Path("/fake/path/analysis_parameters.json")
 
     cli_cls = make_cli_model(MockModel)
-    cli_model = cli_cls()
+    cli_model = cli_cls.model_construct()
 
     with patch("builtins.open", mock_open(read_data=mock_file_data)):
         with patch.object(Path, "exists", return_value=False):

@@ -5,7 +5,7 @@ in the analysis wrapper
 
 import json
 from pathlib import Path
-from unittest.mock import mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 from aind_data_schema.base import GenericModel
 from pydantic import Field
@@ -18,6 +18,7 @@ from analysis_pipeline_utils.utils_analysis_wrapper import (
     _get_merged_analysis_parameters,
     get_analysis_model_parameters,
     make_cli_model,
+    prepare_analysis_jobs
 )
 
 
@@ -140,3 +141,54 @@ def test_get_merged_no_parameters() -> None:
             )
 
     assert not merged  # empty, no parameters
+
+def test_prepare_analysis_jobs_no_parameters() -> None:
+    """Tests prepare_analysis_jobs with empty job
+    files and default dry_run"""
+
+    # Fake job JSON with required distributed_parameters
+    fake_job_json = json.dumps({
+        "s3_location": ["s3://bucket"],
+        "distributed_parameters": {
+            "analysis_name": "Test",
+            "analysis_tag": "v1.0.0",
+            "value_threshold": 3.0
+        },
+        "docdb_record_id": ["id1"],
+    })
+
+    fake_paths = [Path("/fake/job1.json")]
+
+    # Mock CLI model
+    mock_cli_instance = MagicMock()
+    mock_cli_instance.input_directory.glob.return_value = fake_paths
+    mock_cli_instance.dry_run = True
+    mock_cli_instance.model_dump.return_value = {}
+
+    # Patch make_cli_model to return our mocked CLI instance
+    with patch(
+        "analysis_pipeline_utils.utils_analysis_wrapper.make_cli_model",
+        return_value=MagicMock(return_value=mock_cli_instance)
+    ):
+        with patch("builtins.open", mock_open(read_data=fake_job_json)):
+            with patch(
+                (
+                    "analysis_pipeline_utils.analysis_dispatch_model."
+                    "AnalysisDispatchModel.model_validate"
+                ),
+                side_effect=lambda x: AnalysisDispatchModel(**x)
+            ):
+                # Pass the class, not instance
+                jobs, dry_run = prepare_analysis_jobs(MockModel)
+
+    # --- Assertions ---
+    assert dry_run is True
+    assert len(jobs) == 1
+
+    dispatch_input, spec_dict = jobs[0]
+    # dispatch_input is a real AnalysisDispatchModel
+    assert isinstance(dispatch_input, AnalysisDispatchModel)
+    # spec_dict comes from distributed_parameters
+    assert spec_dict["analysis_name"] == "Test"
+    assert spec_dict["analysis_tag"] == "v1.0.0"
+    assert spec_dict["value_threshold"] == 3.0

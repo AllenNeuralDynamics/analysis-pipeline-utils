@@ -18,7 +18,7 @@ from analysis_pipeline_utils.utils_analysis_wrapper import (
     _get_merged_analysis_parameters,
     get_analysis_model_parameters,
     make_cli_model,
-    prepare_analysis_jobs
+    prepare_analysis_jobs,
 )
 
 
@@ -142,20 +142,23 @@ def test_get_merged_no_parameters() -> None:
 
     assert not merged  # empty, no parameters
 
+
 def test_prepare_analysis_jobs_no_parameters() -> None:
     """Tests prepare_analysis_jobs with empty job
     files and default dry_run"""
 
     # Fake job JSON with required distributed_parameters
-    fake_job_json = json.dumps({
-        "s3_location": ["s3://bucket"],
-        "distributed_parameters": {
-            "analysis_name": "Test",
-            "analysis_tag": "v1.0.0",
-            "value_threshold": 3.0
-        },
-        "docdb_record_id": ["id1"],
-    })
+    fake_job_json = json.dumps(
+        {
+            "s3_location": ["s3://bucket"],
+            "distributed_parameters": {
+                "analysis_name": "Test",
+                "analysis_tag": "v1.0.0",
+                "value_threshold": 3.0,
+            },
+            "docdb_record_id": ["id1"],
+        }
+    )
 
     fake_paths = [Path("/fake/job1.json")]
 
@@ -168,7 +171,7 @@ def test_prepare_analysis_jobs_no_parameters() -> None:
     # Patch make_cli_model to return our mocked CLI instance
     with patch(
         "analysis_pipeline_utils.utils_analysis_wrapper.make_cli_model",
-        return_value=MagicMock(return_value=mock_cli_instance)
+        return_value=MagicMock(return_value=mock_cli_instance),
     ):
         with patch("builtins.open", mock_open(read_data=fake_job_json)):
             with patch(
@@ -176,7 +179,7 @@ def test_prepare_analysis_jobs_no_parameters() -> None:
                     "analysis_pipeline_utils.analysis_dispatch_model."
                     "AnalysisDispatchModel.model_validate"
                 ),
-                side_effect=lambda x: AnalysisDispatchModel(**x)
+                side_effect=lambda x: AnalysisDispatchModel(**x),
             ):
                 # Pass the class, not instance
                 jobs, dry_run = prepare_analysis_jobs(MockModel)

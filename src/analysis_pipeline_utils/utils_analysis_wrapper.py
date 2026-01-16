@@ -7,7 +7,7 @@ import json
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, ClassVar, List, Optional, Type, TypeVar, Tuple, Union
+from typing import Any, ClassVar, List, Optional, Tuple, Type, TypeVar, Union
 
 from aind_data_schema.base import GenericModel
 from pydantic import Field, create_model
@@ -196,7 +196,9 @@ def get_analysis_model_parameters(
     return merged_parameters
 
 
-def prepare_analysis_jobs(analysis_specification: GenericModel) -> Tuple[List[Tuple[AnalysisDispatchModel, dict]], bool]:
+def prepare_analysis_jobs(
+    analysis_specification: GenericModel,
+) -> Tuple[List[Tuple[AnalysisDispatchModel, dict]], bool]:
     """
     Prepare dispatcher job models and merged analysis specifications
     for execution.

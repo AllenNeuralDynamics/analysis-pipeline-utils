@@ -5,6 +5,7 @@ Functions for analysis dispatcher
 import csv
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Union
 
@@ -36,6 +37,7 @@ def query_data_assets(
     filter_by: Optional[str] = None,
     unwind_list_fields: Optional[List[str]] = None,
     drop_null_groups: bool = True,
+    **unused_kwargs: Any,
 ) -> List[str]:
     """
     Query DocDB for data assets and build aggregation pipeline.
@@ -83,9 +85,7 @@ def query_data_assets(
 
     if filter_obsolete:
         if not filter_by:
-            raise ValueError(
-                "filter_by must be provided when filter_obsolete is used"
-            )
+            raise ValueError("filter_by must be provided when filter_obsolete is used")
         pipeline.append({"$sort": {filter_obsolete: -1}})
         if drop_null_groups:
             pipeline.append({"$match": {x: {"$ne": None} for x in filter_by}})
@@ -388,3 +388,45 @@ def get_input_model_list(
                     yield record.model_copy(update={"distributed_parameters": params})
             else:
                 yield record
+
+
+def write_input_model_list(
+    input_model_list: Iterator[AnalysisDispatchModel],
+    output_directory: Path,
+    tasks_per_job: int = 1,
+    max_number_of_tasks_dispatched: int = 1000,
+) -> None:
+    """
+    Distributes a list of input models across a specified number of tasks per job,
+    writes the models to disk in JSON format, and logs the progress.
+
+    Parameters
+    ----------
+    input_model_list : list of AnalysisDispatchModel
+        A list of AnalysisDispatchModel instances to be processed and written to disk.
+
+    tasks_per_job: int = 1 : int
+        The number of tasks to group per job when dispatching
+
+    max_number_of_tasks_dispatched: int, Default = 1000
+        The maximum number of tasks to dispatch
+
+    Returns
+    -------
+    None
+        This function does not return any value.
+        It writes JSON files to disk for each input model.
+    """
+
+    if tasks_per_job < 1:
+        raise ValueError("tasks_per_job must be at least 1")
+
+    for task_id, task_model in enumerate(input_model_list):
+        if task_id == max_number_of_tasks_dispatched:
+            break
+        job_id = task_id // tasks_per_job
+        job_folder = output_directory / f"{job_id}"
+        job_folder.mkdir(parents=True, exist_ok=True)
+
+        with open(job_folder / f"{uuid.uuid4()}.json", "w") as f:
+            f.write(task_model.model_dump_json(indent=4))

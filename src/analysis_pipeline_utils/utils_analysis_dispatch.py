@@ -27,7 +27,7 @@ docdb_api_client = get_docdb_client(
     database=DATABASE,
     collection=COLLECTION,
 )
-fs = S3FileSystem(anon=True, use_listings_cache=False)
+fs = S3FileSystem(use_listings_cache=False)
 
 
 def query_data_assets(

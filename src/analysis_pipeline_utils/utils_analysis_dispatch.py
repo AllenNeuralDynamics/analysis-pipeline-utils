@@ -120,13 +120,17 @@ def query_data_assets(
     if group_by:
         if drop_null_groups:
             pipeline.append({"$match": {x: {"$ne": None} for x in group_by}})
+        field_names = [field.replace(".", "__") for field in group_by]
         pipeline.append(
             {
                 "$group": {
                     "_id": [f"${field}" for field in group_by],
                     "s3_location": {"$push": "$location"},
                     "docdb_record_id": {"$push": "$_id"},
-                    **{f"{field}": {"$first": f"${field}"} for field in group_by},
+                    **{
+                        f"{field_names[i]}": {"$first": f"${field}"}
+                        for i, field in enumerate(group_by)
+                    },
                 }
             }
         )
@@ -134,7 +138,7 @@ def query_data_assets(
         pipeline.append(
             {
                 "$addFields": {
-                    "group_metadata": {field: f"${field}" for field in group_by}
+                    "group_metadata": {field: f"${field}" for field in field_names}
                 }
             }
         )
@@ -142,7 +146,7 @@ def query_data_assets(
         pipeline.append(
             {
                 "$project": {
-                    **{f"{field}": 0 for field in group_by},
+                    **{f"{field}": 0 for field in field_names},
                 }
             }
         )

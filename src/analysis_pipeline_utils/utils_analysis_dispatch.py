@@ -120,9 +120,9 @@ def query_data_assets(
     if group_by:
         if drop_null_groups:
             pipeline.append({"$match": {x: {"$ne": None} for x in group_by}})
+        pipeline.append({"$project": {field: 1 for field in group_by+["location"]}})
         pipeline.append(
             {
-                "$project": {"location": 1, **{field: 1 for field in group_by}},
                 "$group": {
                     "_id": [f"${field}" for field in group_by],
                     "s3_location": {"$push": "$location"},

@@ -75,9 +75,7 @@ def test_query_data_assets_no_group(mock_docdb_client):
         ]
     )
 
-    assert result == [
-        {"s3_location": ["bucket/x"], "docdb_record_id": ["idx"]}
-    ]
+    assert result == [{"s3_location": ["bucket/x"], "docdb_record_id": ["idx"]}]
 
 
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.fs")
@@ -94,7 +92,9 @@ def test_get_asset_file_path_records_split_true(mock_fs):
         docdb_record_id=["id1"],
     )
 
-    results = get_asset_file_path_records(record, file_extension=".tif", split_files=True)
+    results = get_asset_file_path_records(
+        record, file_extension=".tif", split_files=True
+    )
 
     assert len(results) == 2
     assert results[0].file_location == ["s3://bucket/key/file1.tif"]
@@ -116,7 +116,9 @@ def test_get_asset_file_path_records_split_false(mock_fs):
         docdb_record_id=["id1"],
     )
 
-    results = get_asset_file_path_records(record, file_extension=".tif", split_files=False)
+    results = get_asset_file_path_records(
+        record, file_extension=".tif", split_files=False
+    )
 
     assert len(results) == 1
     assert results[0].file_location == [
@@ -138,7 +140,9 @@ def test_get_asset_file_path_records_no_files(mock_fs):
         docdb_record_id=["id1"],
     )
 
-    results = get_asset_file_path_records(record, file_extension=".tif", split_files=False)
+    results = get_asset_file_path_records(
+        record, file_extension=".tif", split_files=False
+    )
 
     assert results == []
 
@@ -237,7 +241,7 @@ def test_get_input_model_list_no_extension_no_parameters():
 def test_read_asset_ids_from_csv_valid(tmp_path):
     """Reads valid asset IDs from CSV"""
     csv_path = tmp_path / "assets.csv"
-    csv_path.write_text("asset_id,other\n" "id1,foo\n" "id2,bar\n")
+    csv_path.write_text("asset_id,other\nid1,foo\nid2,bar\n")
 
     result = read_asset_ids_from_csv(csv_path)
 
@@ -247,7 +251,7 @@ def test_read_asset_ids_from_csv_valid(tmp_path):
 def test_read_asset_ids_from_csv_ignores_empty_rows(tmp_path):
     """Ignores empty or whitespace-only asset_id values"""
     csv_path = tmp_path / "assets.csv"
-    csv_path.write_text("asset_id\n" "id1\n" "\n" "   \n" "id2\n")
+    csv_path.write_text("asset_id\nid1\n\n   \nid2\n")
 
     result = read_asset_ids_from_csv(csv_path)
 
@@ -304,7 +308,9 @@ def test_get_data_asset_records_docdb_query_path(mock_query, tmp_path):
         {"s3_location": ["bucket/id1"], "docdb_record_id": ["doc1"]}
     ]
 
-    records = get_data_asset_records(input_directory=tmp_path, docdb_query=str(query_path))
+    records = get_data_asset_records(
+        input_directory=tmp_path, docdb_query=str(query_path)
+    )
 
     mock_query.assert_called_once_with(query={"a": 1})
     assert records[0].docdb_record_id == ["doc1"]

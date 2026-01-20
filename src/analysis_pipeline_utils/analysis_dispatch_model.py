@@ -29,12 +29,16 @@ class AnalysisDispatchModel(BaseModel):
 
     distributed_parameters: Optional[Dict[str, Any]] = Field(
         None,
-        description="Dictionary of analysis parameters distributed by the job dispatcher",
+        description=(
+            "Dictionary of analysis parameters distributed by the job dispatcher"
+        ),
     )
 
     group_metadata: Optional[Dict[str, Any]] = Field(
         None,
-        description="For grouped assets, the shared metadata fields that define the group.",
+        description=(
+            "For grouped assets, the shared metadata fields that define the group."
+        ),
     )
 
     query: Optional[str] = Field(

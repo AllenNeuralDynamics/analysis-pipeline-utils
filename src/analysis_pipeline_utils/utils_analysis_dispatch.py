@@ -120,15 +120,30 @@ def query_data_assets(
     if group_by:
         if drop_null_groups:
             pipeline.append({"$match": {x: {"$ne": None} for x in group_by}})
-        pipeline.append({"$project": {field: 1 for field in group_by+["location"]}})
         pipeline.append(
             {
                 "$group": {
                     "_id": [f"${field}" for field in group_by],
                     "s3_location": {"$push": "$location"},
                     "docdb_record_id": {"$push": "$_id"},
-                    "group_metadata": {"$mergeObjects": "$$ROOT"},
-                },
+                    **{f"{field}": {"$first": f"${field}"} for field in group_by},
+                }
+            }
+        )
+        # Nest metadata fields into group_metadata object
+        pipeline.append(
+            {
+                "$addFields": {
+                    "group_metadata": {field: f"${field}" for field in group_by}
+                }
+            }
+        )
+        # Remove flattened metadata fields
+        pipeline.append(
+            {
+                "$project": {
+                    **{f"{field}": 0 for field in group_by},
+                }
             }
         )
     else:

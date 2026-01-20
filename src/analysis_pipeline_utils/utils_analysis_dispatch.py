@@ -122,16 +122,13 @@ def query_data_assets(
             pipeline.append({"$match": {x: {"$ne": None} for x in group_by}})
         pipeline.append(
             {
+                "$project": {"location": 1, **{field: 1 for field in group_by}},
                 "$group": {
                     "_id": [f"${field}" for field in group_by],
                     "s3_location": {"$push": "$location"},
                     "docdb_record_id": {"$push": "$_id"},
-                    "group_metadata": {
-                        "$mergeObjects": [
-                            {field: f"${field}" for field in group_by}
-                        ]
-                    },
-                }
+                    "group_metadata": {"$mergeObjects": "$$ROOT"},
+                },
             }
         )
     else:

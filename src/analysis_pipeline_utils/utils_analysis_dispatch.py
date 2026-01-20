@@ -7,6 +7,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
+from requests.exceptions import HTTPError
 from typing import Any, Iterator, List, Optional, Union
 
 from s3fs import S3FileSystem
@@ -141,7 +142,14 @@ def query_data_assets(
             }
         )
     logger.info(f"Aggregation pipeline: {pipeline}")
-    response = docdb_api_client.aggregate_docdb_records(pipeline=pipeline)
+    try:
+        response = docdb_api_client.aggregate_docdb_records(pipeline=pipeline)
+    # print body of HTTP error
+    except HTTPError as e:
+        logger.error(f"Error aggregating DocDB records: {e}")
+        if e.response is not None:
+            logger.error(f"HTTP error response: {e.response.text}")
+        raise
 
     return response
 

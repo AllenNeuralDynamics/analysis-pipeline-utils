@@ -127,7 +127,9 @@ def query_data_assets(
                     "s3_location": {"$push": "$location"},
                     "docdb_record_id": {"$push": "$_id"},
                     "group_metadata": {
-                        field: {"$first": f"${field}"} for field in group_by
+                        "$mergeObjects": [
+                            {field: f"${field}" for field in group_by}
+                        ]
                     },
                 }
             }

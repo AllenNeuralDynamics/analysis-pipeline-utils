@@ -314,7 +314,6 @@ def get_asset_file_path_records(
             continue
 
         s3_file_paths.extend(file_paths)
-        logger.info(f"Found {len(file_paths)} *{file_extension} files from s3")
 
         # add records where file extension has been found
         s3_paths_to_use.append(location)

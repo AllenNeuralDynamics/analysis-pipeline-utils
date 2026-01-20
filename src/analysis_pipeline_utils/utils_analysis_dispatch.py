@@ -140,6 +140,7 @@ def query_data_assets(
                 }
             }
         )
+    logger.info(f"Aggregation pipeline: {pipeline}")
     response = docdb_api_client.aggregate_docdb_records(pipeline=pipeline)
 
     return response

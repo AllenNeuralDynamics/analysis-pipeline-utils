@@ -1,5 +1,5 @@
 """
-Class that represents the schema for analysis dispatch
+Class that represents the schema for analysis dispatch outputs
 """
 
 from typing import Any, Dict, List, Optional
@@ -14,27 +14,34 @@ class AnalysisDispatchModel(BaseModel):
 
     s3_location: List[str] = Field(
         ...,
-        title="s3 location",
-        description="S3 bucket path(s) used in analysis",
-    )
-
-    file_location: Optional[List[str]] = Field(
-        None,
-        title="file location",
-        description="Full s3 path to specific file within the data asset.",
-    )
-
-    distributed_parameters: Optional[Dict[str, Any]] = Field(
-        None,
-        title="Distributed parameters",
-        description=(
-            "Dictionary of analysis parameters "
-            "distributed by the job dispatcher"
-        ),
+        description="S3 bucket path of each asset to be analyzed.",
     )
 
     docdb_record_id: List[str] = Field(
         ...,
-        title="Docdb record id",
-        description=("Docdb record ids to use for " "getting metadata"),
+        description="DocDB record ids of each asset to be analyzed.",
+    )
+
+    file_location: Optional[List[str]] = Field(
+        None,
+        description="Full S3 path to specific file within each data asset.",
+    )
+
+    distributed_parameters: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Dictionary of analysis parameters distributed by the job dispatcher"
+        ),
+    )
+
+    group_metadata: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "For grouped assets, the shared metadata fields that define the group."
+        ),
+    )
+
+    query: Optional[str] = Field(
+        None,
+        description="The query used to retrieve the data assets from DocDB.",
     )

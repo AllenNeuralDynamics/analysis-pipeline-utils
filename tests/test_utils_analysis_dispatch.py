@@ -29,6 +29,7 @@ def test_query_data_assets_with_group(mock_docdb_client):
             "_id": ["sess1"],
             "s3_location": ["bucket/a"],
             "docdb_record_id": ["id1"],
+            "group_metadata": {"session": "sess1"},
         }
     ]
     mock_docdb_client.aggregate_docdb_records.return_value = expected_response
@@ -44,7 +45,17 @@ def test_query_data_assets_with_group(mock_docdb_client):
                     "_id": ["$session"],
                     "s3_location": {"$push": "$location"},
                     "docdb_record_id": {"$push": "$_id"},
-                    "group_metadata": {"session": {"$first": "$session"}},
+                    "session": {"$first": "$session"},
+                }
+            },
+            {
+                "$addFields": {
+                    "group_metadata": {"session": "$session"}
+                }
+            },
+            {
+                "$project": {
+                    "session": 0,
                 }
             },
         ]

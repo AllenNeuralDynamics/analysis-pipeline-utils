@@ -34,7 +34,7 @@ fs = S3FileSystem(use_listings_cache=False)
 def query_data_assets(
     query: dict,
     group_by: Optional[List[str]] = None,
-    filter_obsolete: Optional[str] = None,
+    filter_latest: Optional[str] = None,
     filter_by: Optional[str] = None,
     unwind_list_fields: Optional[List[str]] = None,
     drop_null_groups: bool = True,
@@ -55,14 +55,14 @@ def query_data_assets(
         A list of DocDB record fields to group records by. If None, no grouping
         is performed and records are projected as-is.
 
-    filter_obsolete : Optional[str], default None
-        A DocDB record field to use to filter obsolete records. If provided,
+    filter_latest : Optional[str], default None
+        A DocDB record field to use to filter latest records. If provided,
         records will be sorted by this field in descending order, and only the
         most recent record in each group will be retained.
 
     filter_by : Optional[str], default None
-        Fields to group by when filtering obsolete records. Required if
-        ``filter_obsolete`` is provided.
+        Fields to group by when filtering latest records. Required if
+        ``filter_latest`` is provided.
 
     unwind_list_fields : Optional[List[str]], default None
         List of fields to unwind (flatten) before grouping. Useful for
@@ -80,16 +80,19 @@ def query_data_assets(
     Raises
     ------
     ValueError
-        If ``filter_obsolete`` is provided without ``filter_by``.
+        If ``filter_latest`` is provided without ``filter_by``.
     """
     pipeline = [{"$match": query}]
 
-    if filter_obsolete:
+    if drop_null_groups:
+        all_group_fields = (filter_by or []) + (group_by or [])
+        if len(all_group_fields) > 0:
+            pipeline.append({"$match": {x: {"$ne": None} for x in all_group_fields}})
+    
+    if filter_latest:
         if not filter_by:
-            raise ValueError("filter_by must be provided when filter_obsolete is used")
-        pipeline.append({"$sort": {filter_obsolete: -1}})
-        if drop_null_groups:
-            pipeline.append({"$match": {x: {"$ne": None} for x in filter_by}})
+            raise ValueError("filter_by must be provided when filter_latest is used")
+        pipeline.append({"$sort": {filter_latest: -1}})
         pipeline.append(
             {
                 "$group": {
@@ -118,8 +121,6 @@ def query_data_assets(
                 ]
             )
     if group_by:
-        if drop_null_groups:
-            pipeline.append({"$match": {x: {"$ne": None} for x in group_by}})
         field_names = [field.replace(".", "__") for field in group_by]
         pipeline.append(
             {
@@ -242,7 +243,7 @@ def get_data_asset_records(
 
     **query_args
         Additional keyword arguments to pass to ``query_data_assets()``.
-        Common examples: ``group_by``, ``filter_obsolete``, ``filter_by``.
+        Common examples: ``group_by``, ``filter_latest``, ``filter_by``.
 
     Returns
     -------

@@ -84,11 +84,10 @@ def query_data_assets(
     """
     pipeline = [{"$match": query}]
 
-    if drop_null_groups:
-        all_group_fields = (filter_by or []) + (group_by or [])
-        if len(all_group_fields) > 0:
-            pipeline.append({"$match": {x: {"$ne": None} for x in all_group_fields}})
-    
+    all_group_fields = (filter_by or []) + (group_by or [])
+    if drop_null_groups and len(all_group_fields) > 0:
+        pipeline.append({"$match": {x: {"$ne": None} for x in all_group_fields}})
+
     if filter_latest:
         if not filter_by:
             raise ValueError("filter_by must be provided when filter_latest is used")

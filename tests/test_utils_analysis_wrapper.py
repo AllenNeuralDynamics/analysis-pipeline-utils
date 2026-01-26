@@ -45,8 +45,8 @@ def test_make_cli_model_class() -> None:
     assert issubclass(cli_model_class, BaseSettings)
     assert cli_model_class.__name__ == "MockModelCLI"
 
-    # Instantiate the CLI model (empty because all fields optional)
-    cli_model = cli_model_class()
+    # Instantiate the CLI model without pulling in args
+    cli_model = cli_model_class.model_construct()
 
     # Compare fields keys on the class
     model_fields = set(MockModel.model_fields.keys())

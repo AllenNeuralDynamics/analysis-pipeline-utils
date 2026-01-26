@@ -17,7 +17,7 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
 from analysis_pipeline_utils.utils_analysis_wrapper import (
     _get_merged_analysis_parameters,
     get_analysis_model_parameters,
-    make_cli_model,
+    make_cli_model_class,
     prepare_analysis_jobs,
 )
 
@@ -38,10 +38,10 @@ class MockModel(GenericModel):
     value_threshold: float = Field(..., description="Threshold on data")
 
 
-def test_make_cli_model() -> None:
+def test_make_cli_model_class() -> None:
     """Test the creation of cli model object"""
     # Pass the class
-    cli_model_class = make_cli_model(MockModel)
+    cli_model_class = make_cli_model_class(MockModel)
     assert issubclass(cli_model_class, BaseSettings)
     assert cli_model_class.__name__ == "MockModelCLI"
 
@@ -76,7 +76,7 @@ def test_get_analysis_model_parameters() -> None:
 
     fake_path = Path("/fake/path/analysis_parameters.json")
 
-    cli_cls = make_cli_model(MockModel)
+    cli_cls = make_cli_model_class(MockModel)
     cli_model = cli_cls()
 
     with patch("builtins.open", mock_open(read_data=mock_file_data)):
@@ -128,7 +128,7 @@ def test_get_merged_no_parameters() -> None:
 
     fake_path = Path("/fake/path/analysis_parameters.json")
 
-    cli_cls = make_cli_model(MockModel)
+    cli_cls = make_cli_model_class(MockModel)
     cli_model = cli_cls()
 
     with patch("builtins.open", mock_open(read_data=mock_file_data)):
@@ -168,9 +168,9 @@ def test_prepare_analysis_jobs_no_parameters() -> None:
     mock_cli_instance.dry_run = True
     mock_cli_instance.model_dump.return_value = {}
 
-    # Patch make_cli_model to return our mocked CLI instance
+    # Patch make_cli_model_class to return our mocked CLI instance
     with patch(
-        "analysis_pipeline_utils.utils_analysis_wrapper.make_cli_model",
+        "analysis_pipeline_utils.utils_analysis_wrapper.make_cli_model_class",
         return_value=MagicMock(return_value=mock_cli_instance),
     ):
         with patch("builtins.open", mock_open(read_data=fake_job_json)):

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=GenericModel)
 
 
-def make_cli_model(model_cls: Type[T]) -> Type[BaseSettings]:
+def make_cli_model_class(model_cls: Type[T]) -> Type[BaseSettings]:
     """
     Create a CLI-ready subclass of the given analysis specification model.
 
@@ -217,7 +217,7 @@ def prepare_analysis_jobs(
             - dict: merged and validated analysis specification
         - dry_run: bool, indicates whether this run is a dry run
     """
-    cli_cls = make_cli_model(analysis_specification)
+    cli_cls = make_cli_model_class(analysis_specification)
     cli_model = cli_cls()
     logger.info(f"Command line args {cli_model.model_dump()}")
     input_model_paths = tuple(cli_model.input_directory.glob("job_dict/*"))

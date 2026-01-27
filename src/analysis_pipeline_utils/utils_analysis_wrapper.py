@@ -7,7 +7,7 @@ import json
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, ClassVar, Optional, Type, TypeVar, Union
+from typing import Any, ClassVar, List, Optional, Tuple, Type, TypeVar, Union
 
 from aind_data_schema.base import GenericModel
 from pydantic import Field, create_model
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=GenericModel)
 
 
-def make_cli_model(model_cls: Type[T]) -> Type[BaseSettings]:
+def make_cli_model_class(model_cls: Type[T]) -> Type[BaseSettings]:
     """
     Create a CLI-ready subclass of the given analysis specification model.
 
@@ -194,3 +194,59 @@ def get_analysis_model_parameters(
     )
 
     return merged_parameters
+
+
+def prepare_analysis_jobs(
+    analysis_specification: GenericModel,
+) -> Tuple[List[Tuple[AnalysisDispatchModel, dict]], bool]:
+    """
+    Prepare dispatcher job models and merged analysis specifications
+    for execution.
+
+    Parameters
+    ----------
+    analysis_specification : GenericModel
+        The analysis specification model class used to validate
+        and merge parameters for each job.
+
+    Returns
+    -------
+    Tuple[List[Tuple[AnalysisDispatchModel, dict]], bool]
+        - List of tuples, each containing:
+            - AnalysisDispatchModel: validated dispatcher job input
+            - dict: merged and validated analysis specification
+        - dry_run: bool, indicates whether this run is a dry run
+    """
+    cli_cls = make_cli_model_class(analysis_specification)
+    cli_model = cli_cls()
+    logger.info(f"Command line args {cli_model.model_dump()}")
+    input_model_paths = tuple(cli_model.input_directory.glob("job_dict/*"))
+    logger.info(
+        f"Found {len(input_model_paths)} input job models to run analysis on."
+    )
+
+    analysis_jobs = []
+    for model_path in input_model_paths:
+        with open(model_path, "r") as f:
+            analysis_dispatch_inputs = AnalysisDispatchModel.model_validate(
+                json.load(f)
+            )
+        merged_parameters = get_analysis_model_parameters(
+            analysis_dispatch_inputs,
+            cli_model,
+            analysis_specification,
+            analysis_parameters_json_path=cli_model.input_directory
+            / "analysis_parameters.json",
+        )
+        analysis_specification = analysis_specification.model_validate(
+            merged_parameters
+        ).model_dump()
+
+        analysis_jobs.append(
+            (analysis_dispatch_inputs, analysis_specification)
+        )
+
+    # Extract dry_run flag from CLI model
+    dry_run = bool(cli_model.dry_run)
+
+    return analysis_jobs, dry_run

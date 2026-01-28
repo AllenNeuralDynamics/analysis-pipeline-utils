@@ -92,7 +92,7 @@ def run_analysis_jobs(
     cli_cls = make_cli_model_class(analysis_input_model)
     cli_model = cli_cls()
     # parse CLI params for single-capsule app panel run
-    cli_params = cli_model.model_dump()
+    cli_params = cli_model.model_dump(exclude_unset=True)
     logger.info(f"App panel CLI parameter overrides {cli_params}")
     input_model_paths = tuple(cli_model.input_directory.glob("job_dict/*"))
     logger.info(f"Found {len(input_model_paths)} input job models to run analysis on.")
@@ -104,6 +104,7 @@ def run_analysis_jobs(
             analysis_dispatch_inputs = AnalysisDispatchModel.model_validate_json(
                 f.read()
             )
+        logger.info(f"Running analysis for input model {model_path}")
         dispatch_params = analysis_dispatch_inputs.analysis_code.parameters.model_dump()
         analysis_specification = analysis_input_model.model_validate(
             dispatch_params | cli_params

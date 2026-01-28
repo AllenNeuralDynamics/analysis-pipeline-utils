@@ -18,7 +18,6 @@ from analysis_pipeline_utils.metadata import (
     construct_processing_record,
     docdb_record_exists,
     extract_parameters,
-    get_code_metadata_from_git,
     get_data_asset_url,
     get_docdb_records,
     get_metadata_for_records,
@@ -83,7 +82,7 @@ def test_extract_parameters_with_ordered_params(mock_computation):
 
 
 # Test construct_processing_record function
-@patch("analysis_pipeline_utils.metadata.query_code_ocean_metadata")
+@patch("analysis_pipeline_utils.metadata.get_codeocean_process_metadata")
 def test_construct_processing_record(mock_query):
     """Tests constructing processing record"""
     # Setup mock process
@@ -130,22 +129,6 @@ def test_initialize_codeocean_client_missing_env():
         with pytest.raises(ValueError):
             _initialize_codeocean_client()
 
-
-# Test get_code_metadata_from_git function
-@patch("analysis_pipeline_utils.metadata._run_git_command")
-def test_get_code_metadata_from_git(mock_run_git):
-    """Tests getting code metadata from git"""
-    mock_run_git.side_effect = [
-        "https://github.com/org/test-repo.git",  # remote URL
-        "abc123",  # commit hash
-    ]
-
-    result = get_code_metadata_from_git()
-
-    assert isinstance(result, ps.Code)
-    assert result.url == "https://github.com/org/test-repo.git"
-    assert result.version == "abc123"
-    assert result.name == "test-repo"
 
 
 # Test _run_git_command function

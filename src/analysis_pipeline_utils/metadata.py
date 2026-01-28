@@ -192,7 +192,7 @@ def get_codeocean_process_metadata(
                 if from_dispatch:
                     proc = computation.processes[i + 1]
                 parameters.update(extract_parameters(proc))
-            release_version = str(proc.version)
+                release_version = str(proc.version)
                 break
 
     capsule = client.capsules.get_capsule(capsule_id)

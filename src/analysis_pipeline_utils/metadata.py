@@ -178,7 +178,6 @@ def get_codeocean_process_metadata(
         ),
     )
 
-    parameters = extract_parameters(computation)
     # find the component process for the capsule
     if not capsule_id:
         raise ValueError(
@@ -191,9 +190,13 @@ def get_codeocean_process_metadata(
             if proc.capsule_id == capsule_id:
                 if from_dispatch:
                     proc = computation.processes[i + 1]
-                parameters.update(extract_parameters(proc))
+                parameters = extract_parameters(proc)
                 release_version = str(proc.version)
                 break
+    elif not from_dispatch:
+        parameters = extract_parameters(computation)
+    else:
+        parameters = {}
 
     capsule = client.capsules.get_capsule(capsule_id)
     process.name = capsule.name
@@ -206,6 +209,7 @@ def get_codeocean_process_metadata(
     else:
         input_data = []
     code = ps.Code(
+        name=capsule.name,
         url=get_capsule_url(capsule),
         version=release_version or get_capsule_version(capsule),
         run_script="code/run",

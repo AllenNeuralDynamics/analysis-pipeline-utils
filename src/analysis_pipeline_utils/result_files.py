@@ -3,6 +3,7 @@ Functions for interacting with results
 from analysis
 """
 import hashlib
+import warnings
 from typing import Dict
 
 import aind_data_schema.core.processing as ps
@@ -61,14 +62,17 @@ def create_results_metadata(
     s3_prefix = processing_prefix(process.code)
     s3_url = f"s3://{s3_bucket}/{s3_prefix}"
 
-    md = Metadata(
-        processing=ps.Processing.create_with_sequential_process_graph(
-            data_processes=[process]
-        ),
-        # TODO: name matching prefix or something else?
-        name=s3_prefix,
-        location=s3_url,
-    )
+    # suppress no data description warning
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        md = Metadata(
+            processing=ps.Processing.create_with_sequential_process_graph(
+                data_processes=[process]
+            ),
+            # TODO: name matching prefix or something else?
+            name=s3_prefix,
+            location=s3_url,
+        )
     return md, s3_prefix
 
 

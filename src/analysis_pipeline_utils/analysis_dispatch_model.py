@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from aind_data_schema.components import Code
+from aind_data_schema.components.identifiers import Code
 
 class AnalysisDispatchModel(BaseModel):
     """
@@ -41,7 +41,7 @@ class AnalysisDispatchModel(BaseModel):
         None,
         description="The query used to retrieve the data assets from DocDB.",
     )
-    analysis_code: Code = Field(
-        ...,
+    analysis_code: Optional[Code] = Field(
+        None,
         description="Metadata for the analysis code associated with this dispatch input.",
     )

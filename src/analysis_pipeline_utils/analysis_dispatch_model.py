@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from aind_data_schema.components import Code
+from aind_data_schema.components.identifiers import Code
 
 class AnalysisDispatchModel(BaseModel):
     """

@@ -15,7 +15,11 @@ from s3fs import S3FileSystem
 from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
-from analysis_pipeline_utils.metadata import get_docdb_client
+from analysis_pipeline_utils.metadata import (
+    construct_processing_record,
+    docdb_record_exists,
+    get_docdb_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -414,6 +418,33 @@ def get_input_model_list(
                     yield record.model_copy(update={"distributed_parameters": params})
             else:
                 yield record
+
+
+def filter_processed_jobs(
+    input_model_list: Iterator[AnalysisDispatchModel],
+) -> Iterator[AnalysisDispatchModel]:
+    """
+    Filters out already processed analysis jobs from the input model list.
+
+    Parameters
+    ----------
+    input_model_list : Iterator[AnalysisDispatchModel]
+        An iterator of AnalysisDispatchModel instances to be filtered.
+
+    Returns
+    -------
+    Iterator[AnalysisDispatchModel]
+        An iterator of AnalysisDispatchModel instances that have not been processed yet.
+    """
+    for model in input_model_list:
+        process = construct_processing_record(model, from_dispatch=True)
+        if docdb_record_exists(process):
+            logger.info(
+                f"Skipping already processed job for assets {model.docdb_record_id}"
+            )
+        else:
+            model.analysis_code = process.code
+            yield model
 
 
 def write_input_model_list(

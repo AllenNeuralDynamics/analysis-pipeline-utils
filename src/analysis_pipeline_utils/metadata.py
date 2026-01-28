@@ -89,6 +89,7 @@ def extract_parameters(
 
 def construct_processing_record(
     dispatch_inputs: AnalysisDispatchModel,
+    from_dispatch: bool = False,
     **kwargs,
 ) -> ps.DataProcess:
     """Construct a processing record by
@@ -103,7 +104,7 @@ def construct_processing_record(
     Returns:
         ps.DataProcess: Constructed processing record with combined metadata
     """
-    process = query_code_ocean_metadata()
+    process = query_code_ocean_metadata(from_dispatch=from_dispatch)
     # add s3_location and parameters from analysis_job_dict
 
     new_inputs = [DataAsset(url=url) for url in dispatch_inputs.s3_location]
@@ -146,6 +147,7 @@ def _initialize_codeocean_client() -> CodeOcean:
 
 def query_code_ocean_metadata(
     capsule_id: Optional[str] = None,
+    from_dispatch: bool = False,
 ) -> ps.DataProcess:
     """
     Query Code Ocean API for metadata
@@ -187,12 +189,12 @@ def query_code_ocean_metadata(
             "set in environment variable CO_CAPSULE_ID"
         )
     if computation.processes:
-        component_process = next(
-            proc
-            for proc in computation.processes
-            if proc.capsule_id == capsule_id
-        )
-        parameters.update(extract_parameters(component_process))
+        for i, proc in enumerate(computation.processes):
+            if proc.capsule_id == capsule_id:
+                if from_dispatch:
+                    proc = computation.processes[i + 1]
+                parameters.update(extract_parameters(proc))
+                break
         # version = str(component_process.version)
     capsule = client.capsules.get_capsule(capsule_id)
     if computation.data_assets:
@@ -345,18 +347,18 @@ def write_to_docdb(metadata: Metadata, hash: str):
     return response
 
 
-def docdb_record_exists(processing: ps.DataProcess) -> bool:
+def docdb_record_exists(process_code: ps.Code) -> bool:
     """
     Check the document database for
     whether a record already exists matching the analysis metadata
 
     Args:
-        processing: Processing record to check
+        process_code: Processing code record to check
 
     Returns:
         True if record exists or False if not
     """
-    responses = get_docdb_records(processing)
+    responses = get_docdb_records(process_code)
 
     if len(responses) == 1:
         return True
@@ -370,19 +372,19 @@ def docdb_record_exists(processing: ps.DataProcess) -> bool:
         return False
 
 
-def get_docdb_records(processing: ps.DataProcess) -> List[Dict[str, Any]]:
+def get_docdb_records(process_code: ps.Code) -> List[Dict[str, Any]]:
     """
     Get the document database record for the given processing object
 
     Args:
-        processing: Processing record to check
+        process_code: Processing code record to check
 
     Returns:
         List of dictionary records
     """
     client: MetadataDbClient = get_docdb_client()
 
-    docdb_id = processing_prefix(processing)
+    docdb_id = processing_prefix(process_code)
     filter_query = {"_id": docdb_id}
 
     responses = client.retrieve_docdb_records(filter_query=filter_query)

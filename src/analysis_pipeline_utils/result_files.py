@@ -58,7 +58,7 @@ def create_results_metadata(
         s3_prefix: hash based on processing.code field
         that will be used as id in docdb
     """
-    s3_prefix = processing_prefix(process)
+    s3_prefix = processing_prefix(process.code)
     s3_url = f"s3://{s3_bucket}/{s3_prefix}"
 
     md = Metadata(
@@ -72,17 +72,17 @@ def create_results_metadata(
     return md, s3_prefix
 
 
-def processing_prefix(process: ps.DataProcess) -> str:
+def processing_prefix(code: ps.Code) -> str:
     """
     Generate a unique ID for the processing based on its metadata.
 
     Args:
-        process: Processing record
+        code: processing code record
     Returns:
         The hashed string from the model
     """
     # updated to use process.code
     # TODO: hash on input data + parameters from process.code
-    process_metadata = process.code.model_dump_json().encode("utf-8")
+    process_metadata = code.model_dump_json().encode("utf-8")
 
     return hashlib.sha256(process_metadata).hexdigest()

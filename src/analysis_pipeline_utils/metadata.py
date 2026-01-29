@@ -3,6 +3,7 @@
 import logging
 import os
 import subprocess
+import warnings
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -449,7 +450,10 @@ def write_results_and_metadata(
         s3_bucket = os.getenv("ANALYSIS_BUCKET")
     metadata, docdb_id = create_results_metadata(process, s3_bucket)
     with open("/results/metadata.nd.json", "w") as f:
-        f.write(metadata.model_dump_json(indent=2))
+        # suppress no data description warning
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            f.write(metadata.model_dump_json(indent=2))
     if not dry_run:
         copy_results_to_s3(metadata)
         write_to_docdb(metadata, docdb_id)

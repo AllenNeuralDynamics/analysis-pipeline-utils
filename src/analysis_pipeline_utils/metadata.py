@@ -119,7 +119,7 @@ def construct_processing_record(
     else:
         distributed_params = {}
 
-    process.code.parameters = old_params | params | distributed_params
+    process.code.parameters.update(old_params | params | distributed_params)
     return process
 
 

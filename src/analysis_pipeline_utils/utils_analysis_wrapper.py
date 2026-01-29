@@ -106,6 +106,7 @@ def run_analysis_jobs(
             )
         logger.info(f"Running analysis for input model {model_path}")
         dispatch_params = analysis_dispatch_inputs.analysis_code.parameters.model_dump()
+        logger.info(f"Dispatch parameters {dispatch_params}")
         analysis_specification = analysis_input_model.model_validate(
             dispatch_params | cli_params
         )

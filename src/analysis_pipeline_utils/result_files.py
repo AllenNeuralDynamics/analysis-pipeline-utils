@@ -85,6 +85,7 @@ def processing_prefix(code: ps.Code) -> str:
     Returns:
         The hashed string from the model
     """
+    code = ps.Code.model_validate(code)
     # updated to use process.code
     # TODO: hash on input data + parameters from process.code
     process_metadata = code.model_dump_json().encode("utf-8")

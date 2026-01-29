@@ -106,7 +106,7 @@ def construct_processing_record(
 
     # remove dry_run from parameters
     params.pop("dry_run", None)
-    
+
     # add file location as a tracked parameter
     if dispatch_inputs.file_location:
         params.update(file_location=dispatch_inputs.file_location)
@@ -187,13 +187,13 @@ def get_codeocean_process_metadata(
         raise ValueError(
             "Capsule ID must be provided or set in environment variable CO_CAPSULE_ID"
         )
-    release_version = None
+    version = None
     if computation.processes:
         for i, proc in enumerate(computation.processes):
             # if run from dispatch capsule, match the other process in the pipeline
             if (proc.capsule_id == capsule_id) ^ from_dispatch:
                 parameters = extract_parameters(proc)
-                release_version = proc.version
+                version = proc.version
                 break
     elif not from_dispatch:
         parameters = extract_parameters(computation)
@@ -202,6 +202,8 @@ def get_codeocean_process_metadata(
 
     capsule = client.capsules.get_capsule(capsule_id)
     process.name = capsule.name
+    if not version:
+        version = get_capsule_version(capsule, os.getenv("CO_CAPSULE_BRANCH", "HEAD"))
 
     if computation.data_assets:
         input_data = [
@@ -210,10 +212,11 @@ def get_codeocean_process_metadata(
         ]
     else:
         input_data = []
+
     code = ps.Code(
         name=capsule.name,
         url=get_capsule_url(capsule),
-        version=release_version or get_capsule_version(capsule),
+        version=version,
         run_script="code/run",
         parameters=parameters,
         input_data=input_data,
@@ -260,7 +263,7 @@ def _get_git_remote_url() -> str:
     return f"https://{credentials}@{domain}"
 
 
-def get_capsule_version(capsule: Capsule) -> str:
+def get_capsule_version(capsule: Capsule, branch="HEAD") -> str:
     """Get the git version for a specific capsule from the remote repository.
 
     Args:
@@ -271,7 +274,7 @@ def get_capsule_version(capsule: Capsule) -> str:
     """
     capsule_slug = capsule.slug
     git_remote_url = f"{_get_git_remote_url()}/capsule-{capsule_slug}.git"
-    git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, "HEAD"])
+    git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, branch])
     if not git_commit_hash:
         raise ValueError(
             f"Could not retrieve git commit hash for capsule {capsule_slug}"
@@ -368,7 +371,7 @@ def get_docdb_records(process_code: ps.Code) -> List[Dict[str, Any]]:
     client: MetadataDbClient = get_docdb_client()
 
     docdb_id = processing_prefix(process_code)
-    filter_query = {"_id": docdb_id}
+    filter_query = {"name": docdb_id}
 
     responses = client.retrieve_docdb_records(filter_query=filter_query)
     return responses

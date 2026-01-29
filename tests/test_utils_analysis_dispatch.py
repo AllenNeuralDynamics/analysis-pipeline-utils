@@ -11,7 +11,7 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
 from analysis_pipeline_utils.utils_analysis_dispatch import (
     get_asset_file_path_records,
     get_data_asset_records,
-    get_input_model_list,
+    expand_task_list,
     query_data_assets,
     read_asset_ids_from_csv,
 )
@@ -174,7 +174,7 @@ def test_get_asset_file_path_records_split_multiple_assets_raises(mock_fs):
 
 
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.get_asset_file_path_records")
-def test_get_input_model_list_with_parameters(mock_get_files):
+def test_expand_task_list_with_parameters(mock_get_files):
     """Expands records when distributed parameters are provided."""
 
     base_record = AnalysisDispatchModel(
@@ -187,7 +187,7 @@ def test_get_input_model_list_with_parameters(mock_get_files):
 
     params = [{"p": 1}, {"p": 2}]
 
-    result = get_input_model_list(
+    result = expand_task_list(
         [base_record],
         file_extension=".tif",
         split_files=False,
@@ -204,7 +204,7 @@ def test_get_input_model_list_with_parameters(mock_get_files):
 
 
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.get_asset_file_path_records")
-def test_get_input_model_list_skips_empty_file_records(mock_get_files):
+def test_expand_task_list_skips_empty_file_records(mock_get_files):
     """Does not emit models when no files are found."""
 
     base_record = AnalysisDispatchModel(
@@ -213,7 +213,7 @@ def test_get_input_model_list_skips_empty_file_records(mock_get_files):
     )
     mock_get_files.return_value = []
 
-    result = get_input_model_list(
+    result = expand_task_list(
         [base_record],
         file_extension=".tif",
         split_files=False,
@@ -223,7 +223,7 @@ def test_get_input_model_list_skips_empty_file_records(mock_get_files):
     assert result == []
 
 
-def test_get_input_model_list_no_extension_no_parameters():
+def test_expand_task_list_no_extension_no_parameters():
     """Returns records unchanged when no file discovery or parameters."""
 
     records = [
@@ -237,7 +237,7 @@ def test_get_input_model_list_no_extension_no_parameters():
         ),
     ]
 
-    result = get_input_model_list(records)
+    result = expand_task_list(records)
     result = list(result)
 
     assert len(result) == 2

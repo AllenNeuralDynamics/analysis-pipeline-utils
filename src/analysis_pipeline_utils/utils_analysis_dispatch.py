@@ -18,6 +18,7 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
 from analysis_pipeline_utils.metadata import (
     construct_processing_record,
     docdb_record_exists,
+    get_codeocean_process_metadata,
     get_docdb_client,
 )
 
@@ -366,14 +367,14 @@ def get_asset_file_path_records(
     ]
 
 
-def get_input_model_list(
-    records: List[AnalysisDispatchModel],
+def expand_task_list(
+    input_records: List[AnalysisDispatchModel],
     file_extension: str = "",
     split_files: bool = True,
     distributed_analysis_parameters: Optional[List[dict[str, Any]]] = None,
 ) -> Iterator[AnalysisDispatchModel]:
     """
-    Expand dispatch models with optional file discovery and parameter distribution.
+    Expand list of tasks to dispatch with input file details and parameter expansion.
 
     For each input record, optionally discovers matching S3 files and/or
     expands the model for each provided parameter set, resulting in one or
@@ -381,7 +382,7 @@ def get_input_model_list(
 
     Parameters
     ----------
-    records : List[AnalysisDispatchModel]
+    input_records : List[AnalysisDispatchModel]
         A list of analysis dispatch models representing input data assets.
 
     file_extension : str, default ""
@@ -403,7 +404,7 @@ def get_input_model_list(
         Expanded list of dispatch models. Cardinality is determined by the
         product of input records x file matches (if split) x parameter sets.
     """
-    for record in records:
+    for record in input_records:
         if file_extension:
             file_records = get_asset_file_path_records(
                 record,
@@ -420,8 +421,10 @@ def get_input_model_list(
                 yield record
 
 
-def filter_processed_jobs(
+def check_task_parameters(
     input_model_list: Iterator[AnalysisDispatchModel],
+    fixed_analysis_params: Optional[dict[str, Any]] = None,
+    filter_processed: bool = True,
 ) -> Iterator[AnalysisDispatchModel]:
     """
     Filters out already processed analysis jobs from the input model list.
@@ -436,9 +439,14 @@ def filter_processed_jobs(
     Iterator[AnalysisDispatchModel]
         An iterator of AnalysisDispatchModel instances that have not been processed yet.
     """
+    if fixed_analysis_params is None:
+        fixed_analysis_params = {}
+    base_process = get_codeocean_process_metadata(from_dispatch=True)
     for model in input_model_list:
-        process = construct_processing_record(model, from_dispatch=True)
-        if docdb_record_exists(process):
+        process = construct_processing_record(
+            base_process, model, **fixed_analysis_params
+        )
+        if filter_processed and docdb_record_exists(process):
             logger.info(
                 f"Skipping already processed job for assets {model.docdb_record_id}"
             )

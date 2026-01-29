@@ -1,9 +1,4 @@
-"""
-suggested process for analysis wrapper capsule:
-    process = construct_processing_record(dispatch_inputs)
-    if not docdb_record_exists(process):
-    ... run processing
-    write_results_and_metadata(process, ANALYSIS_BUCKET)
+"""Utility functions for handling metadata related operations
 """
 
 import logging
@@ -27,9 +22,6 @@ from .result_files import (
     create_results_metadata,
     processing_prefix,
 )
-
-
-PARAM_PREFIX = "param_"
 
 
 def get_metadata_for_records(
@@ -58,9 +50,7 @@ def get_metadata_for_records(
     for record_id in record_ids:
         record = get_record_from_docdb(docdb_client, record_id)
         if not record:
-            logging.warning(
-                f"No record found for id {record_id}. Skipping adding this"
-            )
+            logging.warning(f"No record found for id {record_id}. Skipping adding this")
             continue
 
         metadata_records.append(record)
@@ -79,18 +69,20 @@ def extract_parameters(
     Returns:
         Dict[str, Any]: Parameters specific to the target capsule
     """
+
+    num_prefix = "ordered_param_"
     if not process.parameters:
         return {}
     return {
-        param.name if param.name else f"{PARAM_PREFIX}{i}": param.value
+        param.name if param.name else f"{num_prefix}{i}": param.value
         for i, param in enumerate(process.parameters)
         if param.value
     }
 
 
 def construct_processing_record(
+    process: ps.DataProcess,
     dispatch_inputs: AnalysisDispatchModel,
-    from_dispatch: bool = False,
     **params,
 ) -> ps.DataProcess:
     """Construct a processing record by
@@ -105,7 +97,6 @@ def construct_processing_record(
     Returns:
         ps.DataProcess: Constructed processing record with combined metadata
     """
-    process = get_codeocean_process_metadata(from_dispatch=from_dispatch)\
 
     # add s3_location and parameters from analysis_job_dict
     new_inputs = [DataAsset(url=url) for url in dispatch_inputs.s3_location]
@@ -118,12 +109,17 @@ def construct_processing_record(
     if dispatch_inputs.file_location:
         params.update(file_location=dispatch_inputs.file_location)
 
-    if dispatch_inputs.distributed_parameters:
-        # distributed_parameters override existing params
-        params = params | dispatch_inputs.distributed_parameters
-        
-    process.code.parameters = process.code.parameters.model_copy(update=params)
+    if dispatch_inputs.analysis_code:
+        old_params = dispatch_inputs.analysis_code.parameters.model_dump()
+    else:
+        old_params = {}
 
+    if dispatch_inputs.distributed_parameters:
+        distributed_params = dispatch_inputs.distributed_parameters
+    else:
+        distributed_params = {}
+
+    process.code.parameters = old_params | params | distributed_params
     return process
 
 
@@ -136,15 +132,11 @@ def _initialize_codeocean_client() -> CodeOcean:
     Raises:
         ValueError: If required environment variables are missing
     """
-    domain = (
-        os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
-    )
+    domain = os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
     token = os.getenv("CODEOCEAN_API_TOKEN")
 
     if not token:
-        raise ValueError(
-            "CODEOCEAN_API_TOKEN environment variable is required"
-        )
+        raise ValueError("CODEOCEAN_API_TOKEN environment variable is required")
 
     return CodeOcean(domain=f"https://{domain}", token=token)
 
@@ -181,8 +173,7 @@ def get_codeocean_process_metadata(
     # find the component process for the capsule
     if not capsule_id:
         raise ValueError(
-            "Capsule ID must be provided or "
-            "set in environment variable CO_CAPSULE_ID"
+            "Capsule ID must be provided or set in environment variable CO_CAPSULE_ID"
         )
     release_version = None
     if computation.processes:
@@ -230,11 +221,8 @@ def _run_git_command(command: List[str]) -> str:
     Returns:
         str: Command output or default value if command fails
     """
-    result = subprocess.run(
-        command, capture_output=True, text=True, check=True
-    )
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
     return result.stdout.strip()
-
 
 
 def _get_git_remote_url() -> str:
@@ -274,9 +262,7 @@ def get_capsule_version(capsule: Capsule) -> str:
     """
     capsule_slug = capsule.slug
     git_remote_url = f"{_get_git_remote_url()}/capsule-{capsule_slug}.git"
-    git_commit_hash = _run_git_command(
-        ["git", "ls-remote", git_remote_url, "HEAD"]
-    )
+    git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, "HEAD"])
     if not git_commit_hash:
         raise ValueError(
             f"Could not retrieve git commit hash for capsule {capsule_slug}"
@@ -316,8 +302,7 @@ def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
         return f"s3://{bucket}/{prefix}"
     else:
         raise ValueError(
-            "Data asset source bucket "
-            f"{data_asset.source_bucket} not supported."
+            f"Data asset source bucket {data_asset.source_bucket} not supported."
         )
 
 
@@ -396,9 +381,7 @@ def get_docdb_records_partial(
     if input_data_locations:
         input_data = [DataAsset(url=url) for url in input_data_locations]
     input_data_dict = (
-        [asset.model_dump(mode="json") for asset in input_data]
-        if input_data
-        else None
+        [asset.model_dump(mode="json") for asset in input_data] if input_data else None
     )
 
     code_prefix = "processing.data_processes.0.code"
@@ -429,9 +412,7 @@ def get_docdb_records_partial(
     return responses
 
 
-def get_docdb_client(
-    host=None, database=None, collection=None
-) -> MetadataDbClient:
+def get_docdb_client(host=None, database=None, collection=None) -> MetadataDbClient:
     """
     Get a client for the document database
     """
@@ -450,7 +431,9 @@ def get_docdb_client(
 
 
 def write_results_and_metadata(
-    process: ps.DataProcess, s3_bucket: str, dry_run: bool = False
+    process: ps.DataProcess,
+    s3_bucket: Optional[str] = None,
+    dry_run: bool = False,
 ) -> None:
     """
     Writes output and copies to s3.
@@ -461,6 +444,8 @@ def write_results_and_metadata(
         s3_bucket: Bucket to copy results to
 
     """
+    if s3_bucket is None:
+        s3_bucket = os.getenv("ANALYSIS_BUCKET")
     metadata, docdb_id = create_results_metadata(process, s3_bucket)
     with open("/results/metadata.nd.json", "w") as f:
         f.write(metadata.model_dump_json(indent=2))

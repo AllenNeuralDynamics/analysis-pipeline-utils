@@ -3,6 +3,7 @@ Functions that are called
 in the analysis wrapper
 """
 
+from email.mime import base
 import json
 import logging
 from collections import defaultdict
@@ -11,7 +12,10 @@ from pathlib import Path
 from typing import Any, Callable, ClassVar, List, Optional, Tuple, Type, TypeVar, Union
 
 from aind_data_schema.base import GenericModel
-from analysis_pipeline_utils.metadata import construct_processing_record
+from analysis_pipeline_utils.metadata import (
+    construct_processing_record,
+    get_codeocean_process_metadata,
+)
 from pydantic import Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -71,7 +75,6 @@ def make_cli_model_class(model_cls: Type[T]) -> Type[BaseSettings]:
     return CLIModel
 
 
-
 def run_analysis_jobs(
     analysis_input_model: Type[GenericModel],
     analysis_output_model: Type[GenericModel],
@@ -90,14 +93,14 @@ def run_analysis_jobs(
     -------
     """
     cli_cls = make_cli_model_class(analysis_input_model)
-    cli_model = cli_cls()
+    cli_args = cli_cls()
     # parse CLI params for single-capsule app panel run
-    cli_params = cli_model.model_dump(exclude_unset=True)
-    logger.info(f"App panel CLI parameter overrides {cli_params}")
-    input_model_paths = tuple(cli_model.input_directory.glob("job_dict/*"))
+    cli_params = cli_args.model_dump(exclude_unset=True)
+    if cli_params:
+        logger.info(f"App panel CLI parameter overrides: {cli_params}")
+    input_model_paths = tuple(cli_args.input_directory.glob("job_dict/*"))
     logger.info(f"Found {len(input_model_paths)} input job models to run analysis on.")
-    dry_run = bool(cli_model.dry_run)
-    s3_bucket = os.getenv("ANALYSIS_BUCKET")
+    dry_run = bool(cli_args.dry_run)
 
     for model_path in input_model_paths:
         with open(model_path, "r") as f:
@@ -105,16 +108,22 @@ def run_analysis_jobs(
                 f.read()
             )
         logger.info(f"Running analysis for input model {model_path}")
-        dispatch_params = analysis_dispatch_inputs.analysis_code.parameters.model_dump()
-        logger.info(f"Dispatch parameters {dispatch_params}")
-        analysis_specification = analysis_input_model.model_validate(
-            dispatch_params | cli_params
-        )
-        analysis_dispatch_inputs.analysis_code.parameters = analysis_specification
 
-        processing = construct_processing_record(analysis_dispatch_inputs)
-        output_params = run_function(analysis_dispatch_inputs, analysis_specification)
-        processing.output_parameters = analysis_output_model(**output_params)
-        write_results_and_metadata(
-            processing, s3_bucket=s3_bucket, dry_run=dry_run
+        # TODO: pull metadata outside loop, then update times etc inside loop
+        base_process = get_codeocean_process_metadata()
+        processing = construct_processing_record(
+            base_process, analysis_dispatch_inputs, **cli_params
         )
+        analysis_params = analysis_input_model.model_validate(
+            processing.code.parameters
+        )
+        if (
+            processing.code.parameters.model_dump_json()
+            != analysis_params.model_dump_json()
+        ):
+            logger.warning(
+                "Parameter validation changed parameters, which may lead to inconsistencies."
+            )
+        output_params = run_function(analysis_dispatch_inputs, analysis_params)
+        processing.output_parameters = analysis_output_model(**output_params)
+        write_results_and_metadata(processing, dry_run=dry_run)

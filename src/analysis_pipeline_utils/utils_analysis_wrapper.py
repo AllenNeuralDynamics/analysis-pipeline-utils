@@ -3,13 +3,9 @@ Functions that are called
 in the analysis wrapper
 """
 
-from email.mime import base
-import json
 import logging
-from collections import defaultdict
-import os
 from pathlib import Path
-from typing import Any, Callable, ClassVar, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, ClassVar, Optional, Type, TypeVar
 
 from aind_data_schema.base import GenericModel
 from analysis_pipeline_utils.metadata import (
@@ -111,6 +107,8 @@ def run_analysis_jobs(
 
         # TODO: pull metadata outside loop, then update times etc inside loop
         base_process = get_codeocean_process_metadata()
+        # remove parameters, already accounted for
+        base_process.code.parameters = GenericModel()
         processing = construct_processing_record(
             base_process, analysis_dispatch_inputs, **cli_params
         )

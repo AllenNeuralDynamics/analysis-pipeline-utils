@@ -5,6 +5,7 @@ Functions for analysis dispatcher
 import csv
 import json
 import logging
+import os
 import uuid
 from pathlib import Path
 from requests.exceptions import HTTPError
@@ -12,6 +13,7 @@ from typing import Any, Iterator, List, Optional, Union
 
 from s3fs import S3FileSystem
 
+from aind_data_access_api.document_db import MetadataDbClient
 from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
@@ -19,20 +21,16 @@ from analysis_pipeline_utils.metadata import (
     construct_processing_record,
     docdb_record_exists,
     get_codeocean_process_metadata,
-    get_docdb_client,
 )
 
 logger = logging.getLogger(__name__)
 
-API_GATEWAY_HOST = "api.allenneuraldynamics.org"
-DATABASE = "metadata_index"
-COLLECTION = "data_assets"
 
-docdb_api_client = get_docdb_client(
-    host=API_GATEWAY_HOST,
-    database=DATABASE,
-    collection=COLLECTION,
-)
+# TODO: move this to pydantic-settings, add version option
+def _docdb_api_client():
+    return MetadataDbClient(host=os.getenv("DOCDB_HOST"))
+
+
 fs = S3FileSystem(use_listings_cache=False)
 
 
@@ -166,7 +164,7 @@ def query_data_assets(
         )
     logger.info(f"Aggregation pipeline: {pipeline}")
     try:
-        response = docdb_api_client.aggregate_docdb_records(pipeline=pipeline)
+        response = _docdb_api_client().aggregate_docdb_records(pipeline=pipeline)
     # print body of HTTP error
     except HTTPError as e:
         logger.error(f"Error aggregating DocDB records: {e}")

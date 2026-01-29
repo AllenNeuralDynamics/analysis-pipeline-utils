@@ -217,7 +217,7 @@ def get_codeocean_process_metadata(
     )
 
     process.code = code
-    return process.model_validate()
+    return process.model_validate(process)
 
 
 def _run_git_command(command: List[str]) -> str:

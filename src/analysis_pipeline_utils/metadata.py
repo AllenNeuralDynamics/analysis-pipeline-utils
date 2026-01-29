@@ -108,6 +108,13 @@ def construct_processing_record(
     if dispatch_inputs.file_location:
         params.update(file_location=dispatch_inputs.file_location)
 
+    if dispatch_inputs.query:
+        if process.notes is None:
+            process.notes = ""
+        else:
+            process.notes += "\n"
+        process.notes += f"Query used to retrieve data assets: {dispatch_inputs.query}"
+
     if dispatch_inputs.analysis_code:
         old_params = dispatch_inputs.analysis_code.parameters.model_dump()
     else:
@@ -163,8 +170,9 @@ def get_codeocean_process_metadata(
     # Extract relevant metadata from the computation
     process = ps.DataProcess.model_construct(
         # computation.name likely only set for named runs
+        experimenters=[os.getenv("CODEOCEAN_EMAIL", "unknown")],
         process_type=ps.ProcessName.ANALYSIS,
-        process_stage=ps.ProcessStage.ANALYSIS,
+        stage=ps.ProcessStage.ANALYSIS,
         start_date_time=datetime.fromtimestamp(computation.created),
         end_date_time=datetime.fromtimestamp(
             computation.created + computation.run_time
@@ -182,7 +190,7 @@ def get_codeocean_process_metadata(
             # if run from dispatch capsule, match the other process in the pipeline
             if (proc.capsule_id == capsule_id) ^ from_dispatch:
                 parameters = extract_parameters(proc)
-                release_version = str(proc.version)
+                release_version = proc.version
                 break
     elif not from_dispatch:
         parameters = extract_parameters(computation)
@@ -209,7 +217,7 @@ def get_codeocean_process_metadata(
     )
 
     process.code = code
-    return process
+    return process.model_validate()
 
 
 def _run_git_command(command: List[str]) -> str:
@@ -236,9 +244,7 @@ def _get_git_remote_url() -> str:
     domain = os.getenv("GIT_HOST")
     if not all([credentials, domain]):
         try:
-            username = os.getenv("CODEOCEAN_EMAIL") or _run_git_command(
-                ["git", "config", "user.email"]
-            )
+            username = os.getenv("CODEOCEAN_EMAIL")
             username = username.replace("@", "%40")
             token = os.getenv("CODEOCEAN_API_TOKEN")
             credentials = f"{username}:{token}"

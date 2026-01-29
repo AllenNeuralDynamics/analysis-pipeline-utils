@@ -180,9 +180,8 @@ def get_codeocean_process_metadata(
     release_version = None
     if computation.processes:
         for i, proc in enumerate(computation.processes):
-            if proc.capsule_id == capsule_id:
-                if from_dispatch:
-                    proc = computation.processes[i + 1]
+            # if run from dispatch capsule, match the other process in the pipeline
+            if (proc.capsule_id == capsule_id) ^ from_dispatch:
                 parameters = extract_parameters(proc)
                 release_version = str(proc.version)
                 break

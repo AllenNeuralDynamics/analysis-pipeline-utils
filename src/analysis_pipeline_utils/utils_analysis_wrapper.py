@@ -4,6 +4,7 @@ in the analysis wrapper
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional, Type, TypeVar
 
@@ -16,7 +17,7 @@ from pydantic import Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from analysis_pipeline_utils.analysis_dispatch_model import AnalysisDispatchModel
-from analysis_pipeline_utils.metadata import write_results_and_metadata
+from analysis_pipeline_utils.metadata import write_results_and_metadata, docdb_record_exists
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -123,6 +124,12 @@ def run_analysis_jobs(
             logger.warning(
                 "Parameter validation changed parameters, which may lead to inconsistencies."
             )
+        if docdb_record_exists(processing.code):
+            logger.info(
+                "Analysis with matching code already exists in DocDB, skipping execution."
+            )
+            os.mknod(f"/results/skip_{model_path.stem}")
+            continue
         output_params = run_function(analysis_dispatch_inputs, analysis_params)
         processing.output_parameters = analysis_output_model(**output_params)
         write_results_and_metadata(processing, dry_run=dry_run)

@@ -114,8 +114,9 @@ def run_analysis_jobs(
         processing = construct_processing_record(
             base_process, analysis_dispatch_inputs, **cli_params
         )
-        analysis_params = analysis_input_model.model_validate(
-            processing.code.parameters
+        logger.info(f"Processing record: {processing}")
+        analysis_params = analysis_input_model(
+            **processing.code.parameters.model_dump()
         )
         if (
             processing.code.parameters.model_dump_json()

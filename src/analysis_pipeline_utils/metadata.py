@@ -106,7 +106,7 @@ def construct_processing_record(
 
     # remove dry_run from parameters
     params.pop("dry_run", None)
-    
+
     # add file location as a tracked parameter
     if dispatch_inputs.file_location:
         params.update(file_location=dispatch_inputs.file_location)
@@ -371,7 +371,7 @@ def get_docdb_records(process_code: ps.Code) -> List[Dict[str, Any]]:
     client: MetadataDbClient = get_docdb_client()
 
     docdb_id = processing_prefix(process_code)
-    filter_query = {"_id": docdb_id}
+    filter_query = {"name": docdb_id}
 
     responses = client.retrieve_docdb_records(filter_query=filter_query)
     return responses

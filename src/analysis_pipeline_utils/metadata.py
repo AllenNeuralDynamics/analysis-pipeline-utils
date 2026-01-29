@@ -1,5 +1,4 @@
-"""Utility functions for handling metadata related operations
-"""
+"""Utility functions for handling metadata related operations"""
 
 import logging
 import os
@@ -119,7 +118,9 @@ def construct_processing_record(
     else:
         distributed_params = {}
 
-    process.code.parameters.update(old_params | params | distributed_params)
+    process.code.parameters = process.code.parameters.model_copy(
+        update=(old_params | params | distributed_params)
+    )
     return process
 
 

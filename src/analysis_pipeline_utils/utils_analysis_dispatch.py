@@ -287,6 +287,8 @@ def get_data_asset_records(
         query_str = json.dumps(query)
         for r in records:
             r["query"] = query_str
+    else:
+        raise ValueError("No data asset input method specified")
 
     logger.info(f"Returned {len(records)} records")
     return [AnalysisDispatchModel(**record) for record in records]

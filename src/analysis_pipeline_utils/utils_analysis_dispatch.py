@@ -448,7 +448,7 @@ def check_task_parameters(
         process = construct_processing_record(
             base_process, model, **fixed_analysis_params
         )
-        if filter_processed and docdb_record_exists(process):
+        if filter_processed and docdb_record_exists(process.code):
             logger.info(
                 f"Skipping already processed job for assets {model.docdb_record_id}"
             )

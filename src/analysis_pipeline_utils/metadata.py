@@ -104,6 +104,9 @@ def construct_processing_record(
     else:
         process.code.input_data.extend(new_inputs)
 
+    # remove dry_run from parameters
+    params.pop("dry_run", None)
+    
     # add file location as a tracked parameter
     if dispatch_inputs.file_location:
         params.update(file_location=dispatch_inputs.file_location)

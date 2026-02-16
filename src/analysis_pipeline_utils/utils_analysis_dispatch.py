@@ -5,6 +5,7 @@ Functions for analysis dispatcher
 import csv
 import json
 import logging
+import os
 import uuid
 from pathlib import Path
 from requests.exceptions import HTTPError
@@ -12,6 +13,7 @@ from typing import Any, Iterator, List, Optional, Union
 
 from s3fs import S3FileSystem
 
+from aind_data_access_api.document_db import MetadataDbClient
 from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
@@ -19,20 +21,12 @@ from analysis_pipeline_utils.metadata import (
     construct_processing_record,
     docdb_record_exists,
     get_codeocean_process_metadata,
-    get_docdb_client,
 )
 
 logger = logging.getLogger(__name__)
 
-API_GATEWAY_HOST = "api.allenneuraldynamics.org"
-DATABASE = "metadata_index"
-COLLECTION = "data_assets"
-
-docdb_api_client = get_docdb_client(
-    host=API_GATEWAY_HOST,
-    database=DATABASE,
-    collection=COLLECTION,
-)
+# TODO: move this to pydantic-settings, add version option
+docdb_api_client = MetadataDbClient(host=os.getenv("DOCDB_HOST"))
 fs = S3FileSystem(use_listings_cache=False)
 
 

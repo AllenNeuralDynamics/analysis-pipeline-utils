@@ -44,7 +44,7 @@ def get_metadata_for_records(
     """
     record_ids = analysis_dispatch_input.docdb_record_id
     metadata_records = []
-    docdb_client = get_docdb_client()
+    docdb_client = MetadataDbClient(host=os.getenv("DOCDB_HOST"))
 
     for record_id in record_ids:
         record = get_record_from_docdb(docdb_client, record_id)

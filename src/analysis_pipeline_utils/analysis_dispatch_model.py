@@ -44,5 +44,5 @@ class AnalysisDispatchModel(BaseModel):
     )
     analysis_code: Optional[Code] = Field(
         None,
-        description="Metadata for the analysis code associated with this dispatch input.",
+        description="Metadata for the analysis code to run in this analysis job.",
     )

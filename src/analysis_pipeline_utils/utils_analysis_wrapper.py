@@ -117,7 +117,9 @@ def run_analysis_jobs(
             base_process, analysis_dispatch_inputs, **cli_params
         )
         logger.info(
-            f"Processing record: {processing.model_dump_json(indent=2, exclude_unset=True)}"
+            f"Processing record: {
+                processing.model_dump_json(indent=2, exclude_unset=True)
+            }"
         )
         analysis_params = analysis_input_model(
             **processing.code.parameters.model_dump()
@@ -127,11 +129,11 @@ def run_analysis_jobs(
             != analysis_params.model_dump_json()
         ):
             logger.warning(
-                "Parameter validation changed parameters, which may lead to inconsistencies."
+                "Parameter validation changed parameters, which may lead to inconsistencies."  # noqa: E501
             )
         if docdb_record_exists(processing.code):
             logger.info(
-                "Analysis with matching code already exists in DocDB, skipping execution."
+                "Analysis with matching code already exists in DocDB, skipping execution."  # noqa: E501
             )
             os.mknod(f"/results/skip_{model_path.stem}")
             continue

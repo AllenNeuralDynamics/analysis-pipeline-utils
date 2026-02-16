@@ -52,11 +52,7 @@ def test_query_data_assets_with_group(mock_docdb_client):
                     "session": {"$first": "$session"},
                 }
             },
-            {
-                "$addFields": {
-                    "group_metadata": {"session": "$session"}
-                }
-            },
+            {"$addFields": {"group_metadata": {"session": "$session"}}},
             {
                 "$project": {
                     "session": 0,
@@ -495,9 +491,7 @@ def test_check_task_parameters_skips_processed(
         AnalysisDispatchModel(s3_location=["bucket/b"], docdb_record_id=["doc2"]),
     ]
 
-    results = list(
-        check_task_parameters(iter(inputs), fixed_analysis_params={"x": 1})
-    )
+    results = list(check_task_parameters(iter(inputs), fixed_analysis_params={"x": 1}))
 
     assert len(results) == 1
     assert results[0].analysis_code is second_process.code

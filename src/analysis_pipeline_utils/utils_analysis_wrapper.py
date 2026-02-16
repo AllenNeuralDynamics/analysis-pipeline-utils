@@ -17,7 +17,10 @@ from pydantic import Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from analysis_pipeline_utils.analysis_dispatch_model import AnalysisDispatchModel
-from analysis_pipeline_utils.metadata import write_results_and_metadata, docdb_record_exists
+from analysis_pipeline_utils.metadata import (
+    write_results_and_metadata,
+    docdb_record_exists,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -113,7 +116,9 @@ def run_analysis_jobs(
         processing = construct_processing_record(
             base_process, analysis_dispatch_inputs, **cli_params
         )
-        logger.info(f"Processing record: {processing.model_dump_json(indent=2, exclude_unset=True)}")
+        logger.info(
+            f"Processing record: {processing.model_dump_json(indent=2, exclude_unset=True)}"
+        )
         analysis_params = analysis_input_model(
             **processing.code.parameters.model_dump()
         )

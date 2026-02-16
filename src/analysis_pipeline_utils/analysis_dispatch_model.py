@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from aind_data_schema.components.identifiers import Code
 
+
 class AnalysisDispatchModel(BaseModel):
     """
     Represents the inputs passed to an analysis by the analysis dispatch

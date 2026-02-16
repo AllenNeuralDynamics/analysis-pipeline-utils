@@ -20,6 +20,8 @@ from analysis_pipeline_utils.metadata import (
     get_docdb_records,
     get_metadata_for_records,
 )
+
+
 # Fixtures for common test data
 @pytest.fixture
 def mock_computation():
@@ -47,9 +49,7 @@ def mock_code_ocean_client():
     """
     client = Mock()
     client.data_assets.get_data_asset.return_value = Mock(
-        source_bucket=Mock(
-            origin="aws", bucket="test-bucket", prefix="test-prefix"
-        )
+        source_bucket=Mock(origin="aws", bucket="test-bucket", prefix="test-prefix")
     )
     return client
 
@@ -92,7 +92,7 @@ def test_construct_processing_record():
         s3_location=["s3://test-bucket/test-data"],
         docdb_record_id=["id1"],
         distributed_parameters={"value_threshold": 0.5},
-        query="{\"field\": 1}",
+        query='{"field": 1}',
     )
 
     result = construct_processing_record(
@@ -110,7 +110,7 @@ def test_construct_processing_record():
     }
     assert (
         result.notes
-        == "Existing note\nQuery used to retrieve data assets: {\"field\": 1}"
+        == 'Existing note\nQuery used to retrieve data assets: {"field": 1}'
     )
 
 
@@ -133,7 +133,6 @@ def test_initialize_codeocean_client_missing_env():
     with patch.dict(os.environ, {}, clear=True):
         with pytest.raises(ValueError):
             _initialize_codeocean_client()
-
 
 
 # Test _run_git_command function
@@ -227,9 +226,7 @@ def test_get_metadata_for_records_all_found(mock_get_record, mock_client_cls):
 
 @patch("analysis_pipeline_utils.metadata.MetadataDbClient")
 @patch("analysis_pipeline_utils.metadata.get_record_from_docdb")
-def test_get_metadata_for_records_missing_record(
-    mock_get_record, mock_client_cls
-):
+def test_get_metadata_for_records_missing_record(mock_get_record, mock_client_cls):
     """Tests fetching metadata when some records are missing."""
     mock_client_cls.return_value = Mock()
 

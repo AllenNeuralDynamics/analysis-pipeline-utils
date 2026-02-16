@@ -73,7 +73,7 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
             "analysis_tag": "v1",
             "value_threshold": 5.0,
         },
-        model_dump_json=lambda: '{"analysis_name":"Test","analysis_tag":"v1","value_threshold":5.0}',# noqa: E501
+        model_dump_json=lambda: '{"analysis_name":"Test","analysis_tag":"v1","value_threshold":5.0}',  # noqa: E501
     )
     processing = MockModel(
         code=MockModel(parameters=dummy_params),
@@ -89,11 +89,11 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
             return_value=MagicMock(return_value=fake_cli_args),
         ) as mock_cli,
         patch(
-            "analysis_pipeline_utils.utils_analysis_wrapper.get_codeocean_process_metadata",# noqa: E501
+            "analysis_pipeline_utils.utils_analysis_wrapper.get_codeocean_process_metadata",  # noqa: E501
             return_value=base_process,
         ) as mock_get_process,
         patch(
-            "analysis_pipeline_utils.utils_analysis_wrapper.construct_processing_record",# noqa: E501
+            "analysis_pipeline_utils.utils_analysis_wrapper.construct_processing_record",  # noqa: E501
             return_value=processing,
         ) as mock_construct,
         patch(
@@ -148,7 +148,7 @@ def test_run_analysis_jobs_skips_processed_job(tmp_path):
                     "analysis_tag": "v1",
                     "value_threshold": 1.0,
                 },
-                model_dump_json=lambda: '{"analysis_name":"Test","analysis_tag":"v1","value_threshold":1.0}',# noqa: E501
+                model_dump_json=lambda: '{"analysis_name":"Test","analysis_tag":"v1","value_threshold":1.0}',  # noqa: E501
             )
         ),
         model_dump_json=lambda *args, **kwargs: "{}",
@@ -161,11 +161,11 @@ def test_run_analysis_jobs_skips_processed_job(tmp_path):
             return_value=MagicMock(return_value=fake_cli_args),
         ),
         patch(
-            "analysis_pipeline_utils.utils_analysis_wrapper.get_codeocean_process_metadata",
+            "analysis_pipeline_utils.utils_analysis_wrapper.get_codeocean_process_metadata",  # noqa: E501
             return_value=base_process,
         ),
         patch(
-            "analysis_pipeline_utils.utils_analysis_wrapper.construct_processing_record",
+            "analysis_pipeline_utils.utils_analysis_wrapper.construct_processing_record",  # noqa: E501
             return_value=processing,
         ),
         patch(

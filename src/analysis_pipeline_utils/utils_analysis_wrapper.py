@@ -116,11 +116,8 @@ def run_analysis_jobs(
         processing = construct_processing_record(
             base_process, analysis_dispatch_inputs, **cli_params
         )
-        logger.info(
-            f"Processing record: {
-                processing.model_dump_json(indent=2, exclude_unset=True)
-            }"
-        )
+        dump = processing.model_dump_json(indent=2, exclude_unset=True)
+        logger.info(f"Processing record: {dump}")
         analysis_params = analysis_input_model(
             **processing.code.parameters.model_dump()
         )

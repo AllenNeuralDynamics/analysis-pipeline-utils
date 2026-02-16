@@ -26,7 +26,8 @@ from analysis_pipeline_utils.metadata import (
 logger = logging.getLogger(__name__)
 
 # TODO: move this to pydantic-settings, add version option
-docdb_api_client = MetadataDbClient(host=os.getenv("DOCDB_HOST"))
+def _docdb_api_client():
+    return MetadataDbClient(host=os.getenv("DOCDB_HOST"))
 fs = S3FileSystem(use_listings_cache=False)
 
 
@@ -160,7 +161,7 @@ def query_data_assets(
         )
     logger.info(f"Aggregation pipeline: {pipeline}")
     try:
-        response = docdb_api_client.aggregate_docdb_records(pipeline=pipeline)
+        response = _docdb_api_client().aggregate_docdb_records(pipeline=pipeline)
     # print body of HTTP error
     except HTTPError as e:
         logger.error(f"Error aggregating DocDB records: {e}")

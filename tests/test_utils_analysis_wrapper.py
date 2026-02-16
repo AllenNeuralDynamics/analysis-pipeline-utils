@@ -1,11 +1,7 @@
-"""
-Tests functions that are called
-in the analysis wrapper
-"""
+"""Tests for the analysis wrapper helpers."""
 
-import json
-from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from types import SimpleNamespace as MockModel
+from unittest.mock import MagicMock, patch
 
 from aind_data_schema.base import GenericModel
 from pydantic import Field
@@ -15,183 +11,180 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
 from analysis_pipeline_utils.utils_analysis_wrapper import (
-    _get_merged_analysis_parameters,
-    get_analysis_model_parameters,
     make_cli_model_class,
-    prepare_analysis_jobs,
+    run_analysis_jobs,
 )
 
 
-class MockModel(GenericModel):
-    """Create a mock analysis model for testing"""
+class ExampleInput(GenericModel):
+    """Create a mock analysis model for testing."""
 
     analysis_name: str = Field(
         ..., description="User-defined name for the analysis"
     )
     analysis_tag: str = Field(
-        ...,
-        description=(
-            "User-defined tag to organize results "
-            "for querying analysis output",
-        ),
-    )
+        ..., description="User-defined tag for querying outputs")
     value_threshold: float = Field(..., description="Threshold on data")
 
 
-def test_make_cli_model_class() -> None:
-    """Test the creation of cli model object"""
-    # Pass the class
-    cli_model_class = make_cli_model_class(MockModel)
+class ExampleOutput(GenericModel):
+    """Simple output schema for run_analysis_jobs tests."""
+
+    status: str = Field(..., description="Run status")
+
+
+def test_make_cli_model_class_defaults() -> None:
+    """CLI model wraps analysis model fields and helper options."""
+
+    cli_model_class = make_cli_model_class(ExampleInput)
+
     assert issubclass(cli_model_class, BaseSettings)
-    assert cli_model_class.__name__ == "MockModelCLI"
+    assert cli_model_class.__name__ == "ExampleInputCLI"
 
-    # Instantiate the CLI model without pulling in args
     cli_model = cli_model_class.model_construct()
+    model_fields = set(ExampleInput.model_fields.keys())
 
-    # Compare fields keys on the class
-    model_fields = set(MockModel.model_fields.keys())
-    cli_fields = set(cli_model.model_dump().keys())
-    assert model_fields == cli_fields
-
-    # check the CLI model instance fields exist (all optional, so default None)
     for field in model_fields:
-        assert getattr(cli_model, field, "missing") is None
+        assert getattr(cli_model, field) is None
+
+    assert cli_model.dry_run == 1
+    assert str(cli_model.input_directory) == "/data"
 
 
-def test_get_analysis_model_parameters() -> None:
-    """Tests getting analysis parameters"""
-    analysis_dispatch_inputs = AnalysisDispatchModel(
-        s3_location=["s3://path/to/bucket"],
-        distributed_parameters={"value_threshold": 0.08},
-        docdb_record_id=["id1"],
+def test_run_analysis_jobs_executes_new_job(tmp_path):
+    """run_analysis_jobs executes pipeline for unprocessed jobs."""
+
+    job_dir = tmp_path / "job_dict"
+    job_dir.mkdir()
+    dispatch_model = AnalysisDispatchModel(
+        s3_location=["s3://bucket"],
+        docdb_record_id=["doc1"],
     )
-    params_dict = {
-        "fixed_parameters": {
-            "analysis_name": "a",
-            "analysis_tag": "V1",
-            "value_threshold": 0.5,
+    job_path = job_dir / "job.json"
+    job_path.write_text(dispatch_model.model_dump_json())
+
+    cli_params = {"override": "value"}
+    fake_cli_args = MockModel(
+        dry_run=0,
+        input_directory=tmp_path,
+        model_dump=lambda exclude_unset=True: cli_params,
+    )
+
+    dummy_params = MockModel(
+        model_dump=lambda: {
+            "analysis_name": "Test",
+            "analysis_tag": "v1",
+            "value_threshold": 5.0,
         },
-    }
-    mock_file_data = json.dumps(params_dict)
-
-    fake_path = Path("/fake/path/analysis_parameters.json")
-
-    cli_cls = make_cli_model_class(MockModel)
-    cli_model = cli_cls()
-
-    with patch("builtins.open", mock_open(read_data=mock_file_data)):
-        with patch.object(Path, "exists", return_value=True):
-            merged = get_analysis_model_parameters(
-                analysis_dispatch_inputs,
-                cli_model,
-                MockModel,
-                analysis_parameters_json_path=fake_path,
-            )
-
-    assert merged.keys() == MockModel.model_fields.keys()
-
-
-def test_get_merged_analysis_parameters() -> None:
-    """Tests getting analysis parameters"""
-    fixed_parameters = {
-        "analysis_name": "a",
-        "analysis_tag": "V1",
-        "value_threshold": 0.5,
-    }
-    cli_parameters = {
-        "analysis_name": "b",
-        "analysis_tag": "V1",
-        "value_threshold": 0.6,
-    }
-    distributed_parameters = {
-        "analysis_name": "c",
-        "analysis_tag": "V1",
-        "value_threshold": 0.05,
-    }
-
-    merged = _get_merged_analysis_parameters(
-        fixed_parameters, cli_parameters, distributed_parameters
+        model_dump_json=lambda: "{\"analysis_name\":\"Test\",\"analysis_tag\":\"v1\",\"value_threshold\":5.0}",
     )
-    assert merged["analysis_name"] == "c"
-    assert merged["value_threshold"] == 0.05  # from distributed
-
-
-def test_get_merged_no_parameters() -> None:
-    """Tests with getting with no parameters"""
-    analysis_dispatch_inputs = AnalysisDispatchModel(
-        s3_location=["s3://path/to/bucket"],
-        distributed_parameters={},
-        docdb_record_id=["id1"],
+    processing = MockModel(
+        code=MockModel(parameters=dummy_params),
+        model_dump_json=lambda *args, **kwargs: "{}",
     )
-    params_dict = {"fixed_parameters": {}}
-    mock_file_data = json.dumps(params_dict)
+    base_process = MockModel(code=MockModel(parameters=None))
 
-    fake_path = Path("/fake/path/analysis_parameters.json")
+    mock_run = MagicMock(return_value={"status": "ok"})
 
-    cli_cls = make_cli_model_class(MockModel)
-    cli_model = cli_cls()
-
-    with patch("builtins.open", mock_open(read_data=mock_file_data)):
-        with patch.object(Path, "exists", return_value=False):
-            merged = get_analysis_model_parameters(
-                analysis_dispatch_inputs,
-                cli_model,
-                MockModel,
-                analysis_parameters_json_path=fake_path,
-            )
-
-    assert not merged  # empty, no parameters
-
-
-def test_prepare_analysis_jobs_no_parameters() -> None:
-    """Tests prepare_analysis_jobs with empty job
-    files and default dry_run"""
-
-    # Fake job JSON with required distributed_parameters
-    fake_job_json = json.dumps(
-        {
-            "s3_location": ["s3://bucket"],
-            "distributed_parameters": {
-                "analysis_name": "Test",
-                "analysis_tag": "v1.0.0",
-                "value_threshold": 3.0,
-            },
-            "docdb_record_id": ["id1"],
-        }
-    )
-
-    fake_paths = [Path("/fake/job1.json")]
-
-    # Mock CLI model
-    mock_cli_instance = MagicMock()
-    mock_cli_instance.input_directory.glob.return_value = fake_paths
-    mock_cli_instance.dry_run = True
-    mock_cli_instance.model_dump.return_value = {}
-
-    # Patch make_cli_model_class to return our mocked CLI instance
-    with patch(
-        "analysis_pipeline_utils.utils_analysis_wrapper.make_cli_model_class",
-        return_value=MagicMock(return_value=mock_cli_instance),
+    with (
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.make_cli_model_class",
+            return_value=MagicMock(return_value=fake_cli_args),
+        ) as mock_cli,
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.get_codeocean_process_metadata",
+            return_value=base_process,
+        ) as mock_get_process,
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.construct_processing_record",
+            return_value=processing,
+        ) as mock_construct,
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.docdb_record_exists",
+            return_value=False,
+        ) as mock_exists,
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.write_results_and_metadata"
+        ) as mock_write,
     ):
-        with patch("builtins.open", mock_open(read_data=fake_job_json)):
-            with patch(
-                (
-                    "analysis_pipeline_utils.analysis_dispatch_model."
-                    "AnalysisDispatchModel.model_validate"
-                ),
-                side_effect=lambda x: AnalysisDispatchModel(**x),
-            ):
-                # Pass the class, not instance
-                jobs, dry_run = prepare_analysis_jobs(MockModel)
+        run_analysis_jobs(ExampleInput, ExampleOutput, mock_run)
 
-    # --- Assertions ---
-    assert dry_run is True
-    assert len(jobs) == 1
+    mock_cli.assert_called_once_with(ExampleInput)
+    mock_get_process.assert_called_once()
+    mock_construct.assert_called_once()
 
-    dispatch_input, spec_dict = jobs[0]
-    # dispatch_input is a real AnalysisDispatchModel
-    assert isinstance(dispatch_input, AnalysisDispatchModel)
-    # spec_dict comes from distributed_parameters
-    assert spec_dict["analysis_name"] == "Test"
-    assert spec_dict["analysis_tag"] == "v1.0.0"
-    assert spec_dict["value_threshold"] == 3.0
+    asserted_dispatch = mock_run.call_args.args[0]
+    asserted_params = mock_run.call_args.args[1]
+    assert isinstance(asserted_dispatch, AnalysisDispatchModel)
+    assert isinstance(asserted_params, ExampleInput)
+    assert asserted_params.value_threshold == 5.0
+
+    mock_exists.assert_called_once()
+    mock_write.assert_called_once_with(processing, dry_run=False)
+    assert isinstance(processing.output_parameters, ExampleOutput)
+    assert processing.output_parameters.status == "ok"
+
+
+def test_run_analysis_jobs_skips_processed_job(tmp_path):
+    """Already processed jobs are skipped and skip marker created."""
+
+    job_dir = tmp_path / "job_dict"
+    job_dir.mkdir()
+    dispatch_model = AnalysisDispatchModel(
+        s3_location=["s3://bucket"],
+        docdb_record_id=["doc1"],
+    )
+    job_path = job_dir / "job.json"
+    job_path.write_text(dispatch_model.model_dump_json())
+
+    fake_cli_args = MockModel(
+        dry_run=1,
+        input_directory=tmp_path,
+        model_dump=lambda exclude_unset=True: {},
+    )
+
+    processing = MockModel(
+        code=MockModel(
+            parameters=MockModel(
+                model_dump=lambda: {
+                    "analysis_name": "Test",
+                    "analysis_tag": "v1",
+                    "value_threshold": 1.0,
+                },
+                model_dump_json=lambda: "{\"analysis_name\":\"Test\",\"analysis_tag\":\"v1\",\"value_threshold\":1.0}",
+            )
+        ),
+        model_dump_json=lambda *args, **kwargs: "{}",
+    )
+    base_process = MockModel(code=MockModel(parameters=None))
+
+    with (
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.make_cli_model_class",
+            return_value=MagicMock(return_value=fake_cli_args),
+        ),
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.get_codeocean_process_metadata",
+            return_value=base_process,
+        ),
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.construct_processing_record",
+            return_value=processing,
+        ),
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.docdb_record_exists",
+            return_value=True,
+        ),
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.os.mknod"
+        ) as mock_mknod,
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.write_results_and_metadata"
+        ) as mock_write,
+        patch("analysis_pipeline_utils.utils_analysis_wrapper.GenericModel"),
+    ):
+        run_analysis_jobs(ExampleInput, ExampleOutput, MagicMock())
+
+    mock_write.assert_not_called()
+    marker_name = f"/results/skip_{job_path.stem}"
+    mock_mknod.assert_called_once_with(marker_name)

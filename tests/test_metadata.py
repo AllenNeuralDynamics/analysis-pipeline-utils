@@ -1,11 +1,9 @@
-"""
-Tests functions for processing metadata
-"""
+"""Tests functions for processing metadata."""
 
 import os
+from types import SimpleNamespace as MockModel
 from unittest.mock import Mock, patch
 
-import aind_data_schema.core.processing as ps
 import pytest
 from codeocean.computation import Computation, ComputationState, Param
 
@@ -22,8 +20,6 @@ from analysis_pipeline_utils.metadata import (
     get_docdb_records,
     get_metadata_for_records,
 )
-
-
 # Fixtures for common test data
 @pytest.fixture
 def mock_computation():
@@ -42,22 +38,6 @@ def mock_computation():
         state=ComputationState.Running,
     )
     return computation
-
-
-@pytest.fixture
-def mock_pipeline_process():
-    """
-    Mocks the pipeline process
-    """
-    return [
-        Mock(
-            capsule_id="test_capsule_id",
-            parameters=[
-                {"name": "process1", "value": "value1"},
-                {"name": "", "value": "value2"},
-            ],
-        )
-    ]
 
 
 @pytest.fixture
@@ -81,32 +61,57 @@ def test_extract_parameters_with_ordered_params(mock_computation):
     assert result == {"param1": "value1", "param2": "value2"}
 
 
-# Test construct_processing_record function
-@patch("analysis_pipeline_utils.metadata.get_codeocean_process_metadata")
-def test_construct_processing_record(mock_query):
-    """Tests constructing processing record"""
-    # Setup mock process
-    mock_process = ps.DataProcess.model_construct()
-    mock_process.code = ps.Code(
-        url="https://github.com/test/repo",
-        parameters={},
-        name="test-repo",
-        version="test-version",
-        run_script="code/run",
-        input_data=[],  # Start with empty input_data
-    )
-    mock_query.return_value = mock_process
+class MockModelWithCopy:
+    """Minimal stand-in for a pydantic model with copy support."""
 
-    # Test data
+    def __init__(self, data: dict[str, object]):
+        self._data = dict(data)
+
+    def model_copy(self, update: dict[str, object] | None = None):
+        updated = dict(self._data)
+        if update:
+            updated.update(update)
+        return MockModelWithCopy(updated)
+
+    def model_dump(self):
+        return dict(self._data)
+
+
+def test_construct_processing_record():
+    """Updates process metadata with dispatch details."""
+
+    process = MockModel(
+        code=MockModel(
+            input_data=[],
+            parameters=MockModelWithCopy({"existing": "keep"}),
+        ),
+        notes="Existing note",
+    )
+
     analysis_job = AnalysisDispatchModel(
-        s3_location=["s3://test-bucket/test-data"], docdb_record_id=["id1"]
+        s3_location=["s3://test-bucket/test-data"],
+        docdb_record_id=["id1"],
+        distributed_parameters={"value_threshold": 0.5},
+        query="{\"field\": 1}",
     )
 
-    result = construct_processing_record(analysis_job)
+    result = construct_processing_record(
+        process,
+        analysis_job,
+        extra_param="foo",
+        dry_run=True,
+    )
 
-    assert isinstance(result, ps.DataProcess)
-    assert len(result.code.input_data) == 1
-    assert result.code.input_data[0].url == "s3://test-bucket/test-data"
+    assert result.code.input_data[-1].url == "s3://test-bucket/test-data"
+    assert result.code.parameters.model_dump() == {
+        "existing": "keep",
+        "extra_param": "foo",
+        "value_threshold": 0.5,
+    }
+    assert (
+        result.notes
+        == "Existing note\nQuery used to retrieve data assets: {\"field\": 1}"
+    )
 
 
 # Test _initialize_codeocean_client function
@@ -159,34 +164,22 @@ def test_get_data_asset_url_non_aws(mock_code_ocean_client):
 
 
 # Test DocDB related functions
-@patch("analysis_pipeline_utils.metadata.get_docdb_client")
-@patch(
-    "analysis_pipeline_utils.metadata.processing_prefix",
-    return_value="fakehash",
-)
-def test_docdb_record_exists_true(mock_prefix, mock_get_client):
-    """Tests if docdb record exists - true"""
-    mock_client = Mock()
-    mock_client.retrieve_docdb_records.return_value = ["record"]
-    mock_get_client.return_value = mock_client
+@patch("analysis_pipeline_utils.metadata.get_docdb_records")
+def test_docdb_record_exists_true(mock_get_records):
+    """Tests if docdb record exists - true."""
+    mock_get_records.return_value = ["record"]
 
-    processing = Mock()
-    assert docdb_record_exists(processing) is True
+    assert docdb_record_exists(Mock()) is True
+    mock_get_records.assert_called_once()
 
 
-@patch("analysis_pipeline_utils.metadata.get_docdb_client")
-@patch(
-    "analysis_pipeline_utils.metadata.processing_prefix",
-    return_value="fakehash",
-)
-def test_docdb_record_exists_false(mock_prefix, mock_get_client):
-    """Tests if docdb record exists - false"""
-    mock_client = Mock()
-    mock_client.retrieve_docdb_records.return_value = []
-    mock_get_client.return_value = mock_client
+@patch("analysis_pipeline_utils.metadata.get_docdb_records")
+def test_docdb_record_exists_false(mock_get_records):
+    """Tests if docdb record exists - false."""
+    mock_get_records.return_value = []
 
-    processing = Mock()
-    assert docdb_record_exists(processing) is False
+    assert docdb_record_exists(Mock()) is False
+    mock_get_records.assert_called_once()
 
 
 @patch("analysis_pipeline_utils.metadata.get_docdb_client")
@@ -205,13 +198,13 @@ def test_get_docdb_record_single(mock_prefix, mock_get_client):
     assert result == ["record"]
 
 
+@patch("analysis_pipeline_utils.metadata.MetadataDbClient")
 @patch("analysis_pipeline_utils.metadata.get_record_from_docdb")
-@patch("analysis_pipeline_utils.metadata.get_docdb_client")
-def test_get_metadata_for_records_all_found(mock_get_client, mock_get_record):
-    """Tests fetching metadata when all records are found"""
-    mock_get_client.return_value = Mock()
+def test_get_metadata_for_records_all_found(mock_get_record, mock_client_cls):
+    """Tests fetching metadata when all records are found."""
+    mock_client = Mock()
+    mock_client_cls.return_value = mock_client
 
-    # Mock returned records
     mock_get_record.side_effect = [
         {"_id": "id1", "field": "value1"},
         {"_id": "id2", "field": "value2"},
@@ -229,17 +222,17 @@ def test_get_metadata_for_records_all_found(mock_get_client, mock_get_record):
         {"_id": "id2", "field": "value2"},
     ]
     assert mock_get_record.call_count == 2
+    mock_client_cls.assert_called_once()
 
 
+@patch("analysis_pipeline_utils.metadata.MetadataDbClient")
 @patch("analysis_pipeline_utils.metadata.get_record_from_docdb")
-@patch("analysis_pipeline_utils.metadata.get_docdb_client")
 def test_get_metadata_for_records_missing_record(
-    mock_get_client, mock_get_record
+    mock_get_record, mock_client_cls
 ):
-    """Tests fetching metadata when some records are missing"""
-    mock_get_client.return_value = Mock()
+    """Tests fetching metadata when some records are missing."""
+    mock_client_cls.return_value = Mock()
 
-    # Second record is missing
     mock_get_record.side_effect = [
         {"_id": "id1", "field": "value1"},
         None,
@@ -252,16 +245,15 @@ def test_get_metadata_for_records_missing_record(
 
     result = get_metadata_for_records(analysis_job)
 
-    # Only the found record should be returned
     assert result == [{"_id": "id1", "field": "value1"}]
     assert mock_get_record.call_count == 2
 
 
+@patch("analysis_pipeline_utils.metadata.MetadataDbClient")
 @patch("analysis_pipeline_utils.metadata.get_record_from_docdb")
-@patch("analysis_pipeline_utils.metadata.get_docdb_client")
-def test_get_metadata_for_records_none_found(mock_get_client, mock_get_record):
-    """Tests fetching metadata when no records are found"""
-    mock_get_client.return_value = Mock()
+def test_get_metadata_for_records_none_found(mock_get_record, mock_client_cls):
+    """Tests fetching metadata when no records are found."""
+    mock_client_cls.return_value = Mock()
     mock_get_record.return_value = None
 
     analysis_job = AnalysisDispatchModel(

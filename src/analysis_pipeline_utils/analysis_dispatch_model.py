@@ -18,6 +18,10 @@ class AnalysisDispatchModel(BaseModel):
         ...,
         description="S3 bucket path of each asset to be analyzed.",
     )
+    asset_name: List[str] = Field(
+        ...,
+        description="The name of each asset to be analyzed"
+    )
     docdb_record_id: List[str] = Field(
         ...,
         description="DocDB record ids of each asset to be analyzed.",

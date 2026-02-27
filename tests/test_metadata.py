@@ -90,6 +90,7 @@ def test_construct_processing_record():
 
     analysis_job = AnalysisDispatchModel(
         s3_location=["s3://test-bucket/test-data"],
+        asset_name=["test-data"],
         docdb_record_id=["id1"],
         distributed_parameters={"value_threshold": 0.5},
         query='{"field": 1}',
@@ -211,6 +212,7 @@ def test_get_metadata_for_records_all_found(mock_get_record, mock_client_cls):
 
     analysis_job = AnalysisDispatchModel(
         s3_location=[],
+        asset_name=[],
         docdb_record_id=["id1", "id2"],
     )
 
@@ -237,6 +239,7 @@ def test_get_metadata_for_records_missing_record(mock_get_record, mock_client_cl
 
     analysis_job = AnalysisDispatchModel(
         s3_location=[],
+        asset_name=[],
         docdb_record_id=["id1", "id2"],
     )
 
@@ -255,6 +258,7 @@ def test_get_metadata_for_records_none_found(mock_get_record, mock_client_cls):
 
     analysis_job = AnalysisDispatchModel(
         s3_location=[],
+        asset_name=[],
         docdb_record_id=["id1", "id2"],
     )
 

@@ -90,7 +90,9 @@ def test_query_data_assets_no_group(mock_docdb_client):
         ]
     )
 
-    assert result == [{"s3_location": ["bucket/x"], "asset_name": ["x"], "docdb_record_id": ["idx"]}]
+    assert result == [
+        {"s3_location": ["bucket/x"], "asset_name": ["x"], "docdb_record_id": ["idx"]}
+    ]
 
 
 @patch("analysis_pipeline_utils.utils_analysis_dispatch._docdb_api_client")
@@ -183,9 +185,7 @@ def test_get_asset_file_path_records_split_true(mock_fs):
     ]
 
     record = AnalysisDispatchModel(
-        s3_location=["bucket/key"],
-        docdb_record_id=["id1"],
-        asset_name=["key"]
+        s3_location=["bucket/key"], docdb_record_id=["id1"], asset_name=["key"]
     )
 
     results = get_asset_file_path_records(
@@ -254,7 +254,7 @@ def test_get_asset_file_path_records_split_multiple_assets_raises(mock_fs):
     record = AnalysisDispatchModel(
         s3_location=["bucket/key", "bucket/key2"],
         docdb_record_id=["id1", "id2"],
-        asset_name=["key", "key2"]
+        asset_name=["key", "key2"],
     )
 
     with pytest.raises(ValueError):
@@ -380,8 +380,16 @@ def test_get_data_asset_records_from_csv(mock_query, tmp_path):
     csv_path.write_text("asset_id\nid1\nid2\n")
 
     mock_query.return_value = [
-        {"s3_location": ["bucket/id1"], "asset_name": ["id1"], "docdb_record_id": ["doc1"]},
-        {"s3_location": ["bucket/id2"], "asset_name": ["id2"], "docdb_record_id": ["doc2"]},
+        {
+            "s3_location": ["bucket/id1"],
+            "asset_name": ["id1"],
+            "docdb_record_id": ["doc1"],
+        },
+        {
+            "s3_location": ["bucket/id2"],
+            "asset_name": ["id2"],
+            "docdb_record_id": ["doc2"],
+        },
     ]
 
     records = get_data_asset_records(input_directory=tmp_path, use_data_asset_csv=True)
@@ -411,7 +419,11 @@ def test_get_data_asset_records_docdb_query_path(mock_query, tmp_path):
     query_path.write_text(json.dumps({"a": 1}))
 
     mock_query.return_value = [
-        {"s3_location": ["bucket/id1"], "asset_name": ["id1"], "docdb_record_id": ["doc1"]}
+        {
+            "s3_location": ["bucket/id1"],
+            "asset_name": ["id1"],
+            "docdb_record_id": ["doc1"],
+        }
     ]
 
     records = get_data_asset_records(
@@ -429,7 +441,11 @@ def test_get_data_asset_records_docdb_query_string(mock_query, tmp_path):
 
     query_str = json.dumps({"b": 2})
     mock_query.return_value = [
-        {"s3_location": ["bucket/id2"], "asset_name": ["id2"], "docdb_record_id": ["doc2"]}
+        {
+            "s3_location": ["bucket/id2"],
+            "asset_name": ["id2"],
+            "docdb_record_id": ["doc2"],
+        }
     ]
 
     records = get_data_asset_records(input_directory=tmp_path, docdb_query=query_str)
@@ -447,7 +463,7 @@ def test_write_input_model_list_groups_jobs(mock_uuid, tmp_path):
     models = [
         AnalysisDispatchModel(
             s3_location=[f"bucket/{i}"],
-            asset_name = [f"{i}"],
+            asset_name=[f"{i}"],
             docdb_record_id=[f"doc{i}"],
         )
         for i in range(4)
@@ -507,8 +523,12 @@ def test_check_task_parameters_skips_processed(
     mock_exists.side_effect = [True, False]
 
     inputs = [
-        AnalysisDispatchModel(s3_location=["bucket/a"], asset_name=["a"], docdb_record_id=["doc1"]),
-        AnalysisDispatchModel(s3_location=["bucket/b"], asset_name=["b"], docdb_record_id=["doc2"]),
+        AnalysisDispatchModel(
+            s3_location=["bucket/a"], asset_name=["a"], docdb_record_id=["doc1"]
+        ),
+        AnalysisDispatchModel(
+            s3_location=["bucket/b"], asset_name=["b"], docdb_record_id=["doc2"]
+        ),
     ]
 
     results = list(check_task_parameters(iter(inputs), fixed_analysis_params={"x": 1}))
@@ -535,8 +555,12 @@ def test_check_task_parameters_no_filter(mock_get_process, mock_construct, mock_
     mock_exists.return_value = True
 
     inputs = [
-        AnalysisDispatchModel(s3_location=["bucket/a"], asset_name=["a"], docdb_record_id=["doc1"]),
-        AnalysisDispatchModel(s3_location=["bucket/b"], asset_name=["b"], docdb_record_id=["doc2"]),
+        AnalysisDispatchModel(
+            s3_location=["bucket/a"], asset_name=["a"], docdb_record_id=["doc1"]
+        ),
+        AnalysisDispatchModel(
+            s3_location=["bucket/b"], asset_name=["b"], docdb_record_id=["doc2"]
+        ),
     ]
 
     results = list(check_task_parameters(iter(inputs), filter_processed=False))

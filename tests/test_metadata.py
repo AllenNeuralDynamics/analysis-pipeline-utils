@@ -65,15 +65,18 @@ class MockModelWithCopy:
     """Minimal stand-in for a pydantic model with copy support."""
 
     def __init__(self, data: dict[str, object]):
+        """Initialize fields"""
         self._data = dict(data)
 
     def model_copy(self, update: dict[str, object] | None = None):
+        """Returns mock model copy with updated data"""
         updated = dict(self._data)
         if update:
             updated.update(update)
         return MockModelWithCopy(updated)
 
     def model_dump(self):
+        """Dumps model to dict"""
         return dict(self._data)
 
 

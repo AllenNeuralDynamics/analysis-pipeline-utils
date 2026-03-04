@@ -191,6 +191,7 @@ def get_codeocean_process_metadata(
     if computation.processes:
         for i, proc in enumerate(computation.processes):
             # if run from dispatch capsule, match the other process in the pipeline
+            # TODO: this needs a more robust condition
             if (proc.capsule_id == capsule_id) ^ from_dispatch:
                 parameters = extract_parameters(proc)
                 version = proc.version
@@ -203,7 +204,14 @@ def get_codeocean_process_metadata(
     capsule = client.capsules.get_capsule(capsule_id)
     process.name = capsule.name
     if not version:
-        version = get_capsule_version(capsule, os.getenv("CO_CAPSULE_BRANCH", "HEAD"))
+        branch = os.getenv("CO_CAPSULE_BRANCH", "HEAD")
+        patch_list = os.getenv("PATCH_COMMITS")
+        version = get_capsule_version_ignoring_patches(
+            capsule, patch_list=patch_list, branch=branch
+        )
+        hash = get_capsule_commit_hash(capsule, branch)
+        version = version or hash
+        process.notes = f"Git commit hash: {hash}"
 
     if computation.data_assets:
         input_data = [
@@ -239,8 +247,11 @@ def _run_git_command(command: List[str]) -> str:
     return result.stdout.strip()
 
 
-def _get_git_remote_url() -> str:
-    """Get the git remote URL for the current repository.
+def _get_git_remote_url(capsule_slug: str) -> str:
+    """Get the git remote URL for the specified capsule.
+
+    Args:
+        capsule_slug: Slug of the capsule
 
     Returns:
         str: Remote URL of the git repository
@@ -260,26 +271,105 @@ def _get_git_remote_url() -> str:
                 "GIT_ACCESS_TOKEN or CODEOCEAN_API_TOKEN "
                 "environment variable is required"
             )
-    return f"https://{credentials}@{domain}"
+    return f"https://{credentials}@{domain}/capsule-{capsule_slug}.git"
 
 
-def get_capsule_version(capsule: Capsule, branch="HEAD") -> str:
+def get_capsule_commit_hash(capsule: Capsule, branch="HEAD") -> str:
     """Get the git version for a specific capsule from the remote repository.
 
     Args:
         capsule: Capsule object
+        branch: Branch name or 'HEAD' to specify which version to retrieve
 
     Returns:
         str: Commit hash of the HEAD of the capsule's git repository
     """
-    capsule_slug = capsule.slug
-    git_remote_url = f"{_get_git_remote_url()}/capsule-{capsule_slug}.git"
+    git_remote_url = _get_git_remote_url(capsule.slug)
     git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, branch])
     if not git_commit_hash:
-        raise ValueError(
-            f"Could not retrieve git commit hash for capsule {capsule_slug}"
-        )
+        raise ValueError(f"Could not retrieve git commit hash for capsule {capsule}")
     return git_commit_hash.split()[0]  # Return the commit hash part
+
+
+def get_latest_release(capsule: Capsule) -> Optional[str]:
+    if not capsule.release_capsule:
+        return None
+    client = _initialize_codeocean_client()
+    release_capsule = client.capsules.get_capsule(capsule.release_capsule)
+    versions = release_capsule.versions
+    latest = versions[-1]
+    return latest["major_version"], latest["release_time"]
+
+
+def get_commits_since_release(
+    capsule: Capsule, release_time: str, branch="HEAD"
+) -> List[str]:
+    """Get commits since the release time from the capsule's git repository.
+
+    Args:
+        capsule: Capsule object
+        release_time: ISO 8601 timestamp to filter commits since
+
+    Returns:
+        List of commit hashes since the release time
+    """
+    import tempfile
+
+    git_remote_url = _get_git_remote_url(capsule.slug)
+
+    # Create a temporary directory for the bare clone
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Shallow bare clone (only commits, no working tree)
+        # --depth can be adjusted or removed if full history is needed
+        _run_git_command(
+            [
+                "git",
+                "clone",
+                "--bare",
+                "--single-branch",
+                "--branch",
+                branch,
+                "--shallow-since",
+                release_time,
+                git_remote_url,
+                tmpdir,
+            ]
+        )
+
+        # Run git log in the bare repository
+        result = _run_git_command(
+            [
+                "git",
+                "--git-dir",
+                tmpdir,
+                "log",
+                f"--since={release_time}",
+                "--pretty=format:%H",
+            ]
+        )
+
+        return result.splitlines()
+
+
+def get_capsule_version_ignoring_patches(
+    capsule: Capsule, branch="HEAD", patch_list: Optional[str] = None
+) -> Optional[str]:
+    """Get the capsule version from the latest release, ignoring patch commits.
+    Args:
+        capsule: Capsule object
+        branch: Branch name or 'HEAD' to specify which version to retrieve
+        patch_list: Optional comma-separated list of patch commit hashes to ignore
+    Returns:
+        str: Version of the capsule based on the latest release, or None
+        if there are non-patch commits since release
+    """
+    patch_list = patch_list.split(",") if patch_list else []
+    version, time = get_latest_release(capsule)
+    if version is not None:
+        commits = get_commits_since_release(capsule, release_time=time, branch=branch)
+        if not set(commits).difference(set(patch_list)):
+            return version
+    return None
 
 
 def get_capsule_url(capsule: Capsule) -> str:

@@ -45,7 +45,7 @@ def test_make_cli_model_class_defaults() -> None:
         assert getattr(cli_model, field) is None
 
     assert cli_model.dry_run == 1
-    assert str(cli_model.input_directory) == "/data"
+    assert cli_model.input_directory.as_posix() == "/data"
 
 
 def test_run_analysis_jobs_executes_new_job(tmp_path):
@@ -55,6 +55,7 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
     job_dir.mkdir()
     dispatch_model = AnalysisDispatchModel(
         s3_location=["s3://bucket"],
+        asset_name=["asset1"],
         docdb_record_id=["doc1"],
     )
     job_path = job_dir / "job.json"
@@ -129,6 +130,7 @@ def test_run_analysis_jobs_skips_processed_job(tmp_path):
     job_dir.mkdir()
     dispatch_model = AnalysisDispatchModel(
         s3_location=["s3://bucket"],
+        asset_name=["asset1"],
         docdb_record_id=["doc1"],
     )
     job_path = job_dir / "job.json"

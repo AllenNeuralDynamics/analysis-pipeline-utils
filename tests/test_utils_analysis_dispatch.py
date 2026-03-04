@@ -32,6 +32,7 @@ def test_query_data_assets_with_group(mock_docdb_client):
         {
             "_id": ["sess1"],
             "s3_location": ["bucket/a"],
+            "asset_name": ["a"],
             "docdb_record_id": ["id1"],
             "group_metadata": {"session": "sess1"},
         }
@@ -48,6 +49,7 @@ def test_query_data_assets_with_group(mock_docdb_client):
                 "$group": {
                     "_id": ["$session"],
                     "s3_location": {"$push": "$location"},
+                    "asset_name": {"$push": "$name"},
                     "docdb_record_id": {"$push": "$_id"},
                     "session": {"$first": "$session"},
                 }
@@ -70,7 +72,7 @@ def test_query_data_assets_no_group(mock_docdb_client):
 
     mock_client = mock_docdb_client.return_value
     mock_client.aggregate_docdb_records.return_value = [
-        {"s3_location": ["bucket/x"], "docdb_record_id": ["idx"]}
+        {"s3_location": ["bucket/x"], "asset_name": ["x"], "docdb_record_id": ["idx"]}
     ]
 
     result = query_data_assets(query={"a": 1}, group_by=None)
@@ -82,12 +84,15 @@ def test_query_data_assets_no_group(mock_docdb_client):
                 "$project": {
                     "s3_location": ["$location"],
                     "docdb_record_id": ["$_id"],
+                    "asset_name": ["$name"],
                 }
             },
         ]
     )
 
-    assert result == [{"s3_location": ["bucket/x"], "docdb_record_id": ["idx"]}]
+    assert result == [
+        {"s3_location": ["bucket/x"], "asset_name": ["x"], "docdb_record_id": ["idx"]}
+    ]
 
 
 @patch("analysis_pipeline_utils.utils_analysis_dispatch._docdb_api_client")
@@ -121,6 +126,7 @@ def test_query_data_assets_filter_latest(mock_docdb_client):
                 "$project": {
                     "s3_location": ["$location"],
                     "docdb_record_id": ["$_id"],
+                    "asset_name": ["$name"],
                 }
             },
         ]
@@ -179,8 +185,7 @@ def test_get_asset_file_path_records_split_true(mock_fs):
     ]
 
     record = AnalysisDispatchModel(
-        s3_location=["bucket/key"],
-        docdb_record_id=["id1"],
+        s3_location=["bucket/key"], docdb_record_id=["id1"], asset_name=["key"]
     )
 
     results = get_asset_file_path_records(
@@ -205,6 +210,7 @@ def test_get_asset_file_path_records_split_false(mock_fs):
     record = AnalysisDispatchModel(
         s3_location=["bucket/key"],
         docdb_record_id=["id1"],
+        asset_name=["key"],
     )
 
     results = get_asset_file_path_records(
@@ -229,6 +235,7 @@ def test_get_asset_file_path_records_no_files(mock_fs):
     record = AnalysisDispatchModel(
         s3_location=["bucket/key"],
         docdb_record_id=["id1"],
+        asset_name=["key"],
     )
 
     results = get_asset_file_path_records(
@@ -247,6 +254,7 @@ def test_get_asset_file_path_records_split_multiple_assets_raises(mock_fs):
     record = AnalysisDispatchModel(
         s3_location=["bucket/key", "bucket/key2"],
         docdb_record_id=["id1", "id2"],
+        asset_name=["key", "key2"],
     )
 
     with pytest.raises(ValueError):
@@ -260,6 +268,7 @@ def test_expand_task_list_with_parameters(mock_get_files):
     base_record = AnalysisDispatchModel(
         s3_location=["bucket/key"],
         docdb_record_id=["id1"],
+        asset_name=["key"],
     )
     mock_get_files.return_value = [
         base_record.model_copy(update={"file_location": ["s3://bucket/key/f1"]})
@@ -290,6 +299,7 @@ def test_expand_task_list_skips_empty_file_records(mock_get_files):
     base_record = AnalysisDispatchModel(
         s3_location=["bucket/key"],
         docdb_record_id=["id1"],
+        asset_name=["key"],
     )
     mock_get_files.return_value = []
 
@@ -310,10 +320,12 @@ def test_expand_task_list_no_extension_no_parameters():
         AnalysisDispatchModel(
             s3_location=["bucket/a"],
             docdb_record_id=["id1"],
+            asset_name=["a"],
         ),
         AnalysisDispatchModel(
             s3_location=["bucket/b"],
             docdb_record_id=["id2"],
+            asset_name=["b"],
         ),
     ]
 
@@ -322,10 +334,12 @@ def test_expand_task_list_no_extension_no_parameters():
 
     assert len(result) == 2
     assert result[0].s3_location == ["bucket/a"]
+    assert result[0].asset_name == ["a"]
     assert result[0].docdb_record_id == ["id1"]
     assert result[0].file_location is None
     assert result[0].distributed_parameters is None
     assert result[1].s3_location == ["bucket/b"]
+    assert result[1].asset_name == ["b"]
     assert result[1].docdb_record_id == ["id2"]
 
 
@@ -366,8 +380,16 @@ def test_get_data_asset_records_from_csv(mock_query, tmp_path):
     csv_path.write_text("asset_id\nid1\nid2\n")
 
     mock_query.return_value = [
-        {"s3_location": ["bucket/id1"], "docdb_record_id": ["doc1"]},
-        {"s3_location": ["bucket/id2"], "docdb_record_id": ["doc2"]},
+        {
+            "s3_location": ["bucket/id1"],
+            "asset_name": ["id1"],
+            "docdb_record_id": ["doc1"],
+        },
+        {
+            "s3_location": ["bucket/id2"],
+            "asset_name": ["id2"],
+            "docdb_record_id": ["doc2"],
+        },
     ]
 
     records = get_data_asset_records(input_directory=tmp_path, use_data_asset_csv=True)
@@ -378,6 +400,7 @@ def test_get_data_asset_records_from_csv(mock_query, tmp_path):
 
     assert len(records) == 2
     assert records[0].s3_location == ["bucket/id1"]
+    assert records[0].asset_name == ["id1"]
     assert records[0].docdb_record_id == ["doc1"]
 
 
@@ -396,7 +419,11 @@ def test_get_data_asset_records_docdb_query_path(mock_query, tmp_path):
     query_path.write_text(json.dumps({"a": 1}))
 
     mock_query.return_value = [
-        {"s3_location": ["bucket/id1"], "docdb_record_id": ["doc1"]}
+        {
+            "s3_location": ["bucket/id1"],
+            "asset_name": ["id1"],
+            "docdb_record_id": ["doc1"],
+        }
     ]
 
     records = get_data_asset_records(
@@ -404,6 +431,7 @@ def test_get_data_asset_records_docdb_query_path(mock_query, tmp_path):
     )
 
     mock_query.assert_called_once_with(query={"a": 1})
+    assert records[0].asset_name == ["id1"]
     assert records[0].docdb_record_id == ["doc1"]
 
 
@@ -413,12 +441,17 @@ def test_get_data_asset_records_docdb_query_string(mock_query, tmp_path):
 
     query_str = json.dumps({"b": 2})
     mock_query.return_value = [
-        {"s3_location": ["bucket/id2"], "docdb_record_id": ["doc2"]}
+        {
+            "s3_location": ["bucket/id2"],
+            "asset_name": ["id2"],
+            "docdb_record_id": ["doc2"],
+        }
     ]
 
     records = get_data_asset_records(input_directory=tmp_path, docdb_query=query_str)
 
     mock_query.assert_called_once_with(query={"b": 2})
+    assert records[0].asset_name == ["id2"]
     assert records[0].docdb_record_id == ["doc2"]
 
 
@@ -430,6 +463,7 @@ def test_write_input_model_list_groups_jobs(mock_uuid, tmp_path):
     models = [
         AnalysisDispatchModel(
             s3_location=[f"bucket/{i}"],
+            asset_name=[f"{i}"],
             docdb_record_id=[f"doc{i}"],
         )
         for i in range(4)
@@ -454,6 +488,7 @@ def test_write_input_model_list_groups_jobs(mock_uuid, tmp_path):
 
     payload = json.loads(files_job0[0].read_text())
     assert payload["s3_location"] == ["bucket/0"]
+    assert payload["asset_name"] == ["0"]
     assert payload["docdb_record_id"] == ["doc0"]
 
 
@@ -462,6 +497,7 @@ def test_write_input_model_list_invalid_group_size(tmp_path):
 
     model = AnalysisDispatchModel(
         s3_location=["bucket/a"],
+        asset_name=["a"],
         docdb_record_id=["doc"],
     )
 
@@ -487,8 +523,12 @@ def test_check_task_parameters_skips_processed(
     mock_exists.side_effect = [True, False]
 
     inputs = [
-        AnalysisDispatchModel(s3_location=["bucket/a"], docdb_record_id=["doc1"]),
-        AnalysisDispatchModel(s3_location=["bucket/b"], docdb_record_id=["doc2"]),
+        AnalysisDispatchModel(
+            s3_location=["bucket/a"], asset_name=["a"], docdb_record_id=["doc1"]
+        ),
+        AnalysisDispatchModel(
+            s3_location=["bucket/b"], asset_name=["b"], docdb_record_id=["doc2"]
+        ),
     ]
 
     results = list(check_task_parameters(iter(inputs), fixed_analysis_params={"x": 1}))
@@ -515,8 +555,12 @@ def test_check_task_parameters_no_filter(mock_get_process, mock_construct, mock_
     mock_exists.return_value = True
 
     inputs = [
-        AnalysisDispatchModel(s3_location=["bucket/a"], docdb_record_id=["doc1"]),
-        AnalysisDispatchModel(s3_location=["bucket/b"], docdb_record_id=["doc2"]),
+        AnalysisDispatchModel(
+            s3_location=["bucket/a"], asset_name=["a"], docdb_record_id=["doc1"]
+        ),
+        AnalysisDispatchModel(
+            s3_location=["bucket/b"], asset_name=["b"], docdb_record_id=["doc2"]
+        ),
     ]
 
     results = list(check_task_parameters(iter(inputs), filter_processed=False))

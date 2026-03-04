@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # TODO: move this to pydantic-settings, add version option
 def _docdb_api_client():
+    """Returns the docdb api client"""
     return MetadataDbClient(host=os.getenv("DOCDB_HOST"))
 
 
@@ -130,6 +131,7 @@ def query_data_assets(
                     "_id": [f"${field}" for field in group_by],
                     "s3_location": {"$push": "$location"},
                     "docdb_record_id": {"$push": "$_id"},
+                    "asset_name": {"$push": "$name"},
                     **{
                         f"{field_names[i]}": {"$first": f"${field}"}
                         for i, field in enumerate(group_by)
@@ -159,6 +161,7 @@ def query_data_assets(
                 "$project": {
                     "s3_location": ["$location"],
                     "docdb_record_id": ["$_id"],
+                    "asset_name": ["$name"],
                 }
             }
         )
@@ -332,8 +335,10 @@ def get_asset_file_path_records(
     s3_file_paths = []
 
     s3_paths_to_use = []
+    asset_names_to_use = []
     docdb_ids_to_use = []
     data_asset_paths = record.s3_location
+    asset_names = record.asset_name
     docdb_record_ids = record.docdb_record_id
     if split_files and len(data_asset_paths) > 1:
         raise ValueError(
@@ -349,6 +354,7 @@ def get_asset_file_path_records(
 
         # add records where file extension has been found
         s3_paths_to_use.append(location)
+        asset_names_to_use.append(asset_names[index])
         docdb_ids_to_use.append(docdb_record_ids[index])
     if not s3_paths_to_use:
         return []
@@ -361,6 +367,7 @@ def get_asset_file_path_records(
     return [
         AnalysisDispatchModel(
             s3_location=s3_paths_to_use,
+            asset_name=asset_names_to_use,
             file_location=s3_file_paths,
             docdb_record_id=docdb_ids_to_use,
         )

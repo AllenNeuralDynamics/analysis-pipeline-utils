@@ -65,15 +65,18 @@ class MockModelWithCopy:
     """Minimal stand-in for a pydantic model with copy support."""
 
     def __init__(self, data: dict[str, object]):
+        """Initialize fields"""
         self._data = dict(data)
 
     def model_copy(self, update: dict[str, object] | None = None):
+        """Returns mock model copy with updated data"""
         updated = dict(self._data)
         if update:
             updated.update(update)
         return MockModelWithCopy(updated)
 
     def model_dump(self):
+        """Dumps model to dict"""
         return dict(self._data)
 
 
@@ -90,6 +93,7 @@ def test_construct_processing_record():
 
     analysis_job = AnalysisDispatchModel(
         s3_location=["s3://test-bucket/test-data"],
+        asset_name=["test-data"],
         docdb_record_id=["id1"],
         distributed_parameters={"value_threshold": 0.5},
         query='{"field": 1}',
@@ -211,6 +215,7 @@ def test_get_metadata_for_records_all_found(mock_get_record, mock_client_cls):
 
     analysis_job = AnalysisDispatchModel(
         s3_location=[],
+        asset_name=[],
         docdb_record_id=["id1", "id2"],
     )
 
@@ -237,6 +242,7 @@ def test_get_metadata_for_records_missing_record(mock_get_record, mock_client_cl
 
     analysis_job = AnalysisDispatchModel(
         s3_location=[],
+        asset_name=[],
         docdb_record_id=["id1", "id2"],
     )
 
@@ -255,6 +261,7 @@ def test_get_metadata_for_records_none_found(mock_get_record, mock_client_cls):
 
     analysis_job = AnalysisDispatchModel(
         s3_location=[],
+        asset_name=[],
         docdb_record_id=["id1", "id2"],
     )
 

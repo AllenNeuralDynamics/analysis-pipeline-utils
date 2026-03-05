@@ -26,10 +26,10 @@ from analysis_pipeline_utils.metadata import (
 logger = logging.getLogger(__name__)
 
 
-# TODO: move this to pydantic-settings, add version option
 def _docdb_api_client():
     """Returns the docdb api client"""
-    return MetadataDbClient(host=os.getenv("DOCDB_HOST"))
+    version = os.getenv("DOCDB_VERSION", "v1")
+    return MetadataDbClient(host=os.getenv("DOCDB_HOST"), version=version)
 
 
 fs = S3FileSystem(use_listings_cache=False)

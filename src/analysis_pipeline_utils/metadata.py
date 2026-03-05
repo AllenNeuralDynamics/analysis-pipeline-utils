@@ -433,10 +433,10 @@ def get_capsule_version_ignoring_patches(
     patch_list = patch_list.split(",") if patch_list else []
     release = get_latest_release(capsule)
     if release is not None:
-        time = release["release_time"]
+        time = str(release["release_time"])
         commits = get_commits_since_release(capsule, release_time=time, branch=branch)
         if not set(commits).difference(set(patch_list)):
-            return release["major_version"]
+            return f"{release['major_version']}.{release['minor_version']}"
     return None
 
 

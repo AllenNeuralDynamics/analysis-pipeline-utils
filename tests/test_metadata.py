@@ -13,7 +13,7 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
 from analysis_pipeline_utils.metadata import (
     _initialize_codeocean_client,
     _run_git_command,
-    construct_processing_record,
+    update_analysis_process,
     docdb_record_exists,
     extract_parameters,
     get_data_asset_url,
@@ -99,7 +99,7 @@ def test_construct_processing_record():
         query='{"field": 1}',
     )
 
-    result = construct_processing_record(
+    result = update_analysis_process(
         process,
         analysis_job,
         extra_param="foo",

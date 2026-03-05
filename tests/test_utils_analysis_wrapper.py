@@ -76,11 +76,13 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
         },
         model_dump_json=lambda: '{"analysis_name":"Test","analysis_tag":"v1","value_threshold":5.0}',  # noqa: E501
     )
-    processing = MockModel(
+    process = MockModel(
+        name="TestProcess",
         code=MockModel(parameters=dummy_params),
         model_dump_json=lambda *args, **kwargs: "{}",
     )
-    base_process = MockModel(code=MockModel(parameters=None))
+    base_process = MockModel(name="TestProcess", code=MockModel(parameters=None))
+    processing = MockModel(data_processes=[process])
 
     mock_run = MagicMock(return_value={"status": "ok"})
 
@@ -94,9 +96,13 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
             return_value=base_process,
         ) as mock_get_process,
         patch(
-            "analysis_pipeline_utils.utils_analysis_wrapper.construct_processing_record",  # noqa: E501
-            return_value=processing,
+            "analysis_pipeline_utils.utils_analysis_wrapper.update_analysis_process",  # noqa: E501
+            return_value=process,
         ) as mock_construct,
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.analysis_pipeline_processing_metadata",  # noqa: E501
+            return_value=processing,
+        ) as mock_processing,
         patch(
             "analysis_pipeline_utils.utils_analysis_wrapper.docdb_record_exists",
             return_value=False,
@@ -110,6 +116,7 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
     mock_cli.assert_called_once_with(ExampleInput)
     mock_get_process.assert_called_once()
     mock_construct.assert_called_once()
+    mock_processing.assert_called_once()
 
     asserted_dispatch = mock_run.call_args.args[0]
     asserted_params = mock_run.call_args.args[1]
@@ -119,8 +126,8 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
 
     mock_exists.assert_called_once()
     mock_write.assert_called_once_with(processing, dry_run=False)
-    assert isinstance(processing.output_parameters, ExampleOutput)
-    assert processing.output_parameters.status == "ok"
+    assert isinstance(process.output_parameters, ExampleOutput)
+    assert process.output_parameters.status == "ok"
 
 
 def test_run_analysis_jobs_skips_processed_job(tmp_path):
@@ -142,7 +149,7 @@ def test_run_analysis_jobs_skips_processed_job(tmp_path):
         model_dump=lambda exclude_unset=True: {},
     )
 
-    processing = MockModel(
+    process = MockModel(
         code=MockModel(
             parameters=MockModel(
                 model_dump=lambda: {
@@ -152,10 +159,11 @@ def test_run_analysis_jobs_skips_processed_job(tmp_path):
                 },
                 model_dump_json=lambda: '{"analysis_name":"Test","analysis_tag":"v1","value_threshold":1.0}',  # noqa: E501
             )
-        ),
+            ),
         model_dump_json=lambda *args, **kwargs: "{}",
     )
-    base_process = MockModel(code=MockModel(parameters=None))
+    processing = MockModel(data_processes=[process])
+    base_process = MockModel(name="TestProcess", code=MockModel(parameters=None))
 
     with (
         patch(
@@ -167,7 +175,11 @@ def test_run_analysis_jobs_skips_processed_job(tmp_path):
             return_value=base_process,
         ),
         patch(
-            "analysis_pipeline_utils.utils_analysis_wrapper.construct_processing_record",  # noqa: E501
+            "analysis_pipeline_utils.utils_analysis_wrapper.update_analysis_process",  # noqa: E501
+            return_value=process,
+        ),
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.analysis_pipeline_processing_metadata",  # noqa: E501
             return_value=processing,
         ),
         patch(

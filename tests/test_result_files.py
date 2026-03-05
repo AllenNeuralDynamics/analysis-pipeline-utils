@@ -86,7 +86,8 @@ def test_create_results_metadata(mock_process):
     """Test that create_results_metadata returns a valid Metadata object."""
     s3_bucket = "test-bucket"
 
-    result, docdb_id = create_results_metadata(mock_process, s3_bucket)
+    processing = ps.Processing.create_with_sequential_process_graph([mock_process])
+    result, docdb_id = create_results_metadata(processing, s3_bucket)
 
     # Check that the result is a Metadata object
     assert isinstance(result, Metadata)

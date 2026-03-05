@@ -7,11 +7,13 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional, Type, TypeVar
+from datetime import datetime
 
 from aind_data_schema.base import GenericModel
 from analysis_pipeline_utils.metadata import (
-    construct_processing_record,
+    update_analysis_process,
     get_codeocean_process_metadata,
+    analysis_pipeline_processing_metadata,
 )
 from pydantic import Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -102,6 +104,10 @@ def run_analysis_jobs(
     logger.info(f"Found {len(input_model_paths)} input job models to run analysis on.")
     dry_run = bool(cli_args.dry_run)
 
+    base_process = get_codeocean_process_metadata()
+    # remove parameters, already accounted for in input model
+    base_process.code.parameters = GenericModel()
+    processing = analysis_pipeline_processing_metadata(base_process)
     for model_path in input_model_paths:
         with open(model_path, "r") as f:
             analysis_dispatch_inputs = AnalysisDispatchModel.model_validate_json(
@@ -109,31 +115,33 @@ def run_analysis_jobs(
             )
         logger.info(f"Running analysis for input model {model_path}")
 
-        # TODO: pull metadata outside loop, then update times etc inside loop
-        base_process = get_codeocean_process_metadata()
-        # remove parameters, already accounted for
-        base_process.code.parameters = GenericModel()
-        processing = construct_processing_record(
+        process = update_analysis_process(
             base_process, analysis_dispatch_inputs, **cli_params
         )
-        dump = processing.model_dump_json(indent=2, exclude_unset=True)
-        logger.info(f"Processing record: {dump}")
-        analysis_params = analysis_input_model(
-            **processing.code.parameters.model_dump()
+        processing.data_processes = [process]
+        process.start_date_time = datetime.now()
+        logger.debug(
+            f"""Processing record:
+            {process.model_dump_json(indent=2, exclude_unset=True)}
+            """
         )
-        if (
-            processing.code.parameters.model_dump_json()
-            != analysis_params.model_dump_json()
-        ):
-            logger.warning(
-                "Parameter validation changed parameters, which may lead to inconsistencies."  # noqa: E501
-            )
-        if docdb_record_exists(processing.code):
+
+        if docdb_record_exists(process.code):
             logger.info(
-                "Analysis with matching code already exists in DocDB, skipping execution."  # noqa: E501
+                "Analysis with matching code already exists in DocDB, skipping."
             )
             os.mknod(f"/results/skip_{model_path.stem}")
             continue
+
+        # validate parameters
+        analysis_params = analysis_input_model(**process.code.parameters.model_dump())
+        if (
+            process.code.parameters.model_dump_json()
+            != analysis_params.model_dump_json()
+        ):
+            logger.warning("Parameter validation changed parameter values.")
+
         output_params = run_function(analysis_dispatch_inputs, analysis_params)
-        processing.output_parameters = analysis_output_model(**output_params)
+        process.end_date_time = datetime.now()
+        process.output_parameters = analysis_output_model(**output_params)
         write_results_and_metadata(processing, dry_run=dry_run)

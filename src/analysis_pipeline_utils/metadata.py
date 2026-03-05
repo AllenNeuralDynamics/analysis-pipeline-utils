@@ -79,22 +79,21 @@ def extract_parameters(
     }
 
 
-def construct_processing_record(
+def update_analysis_process(
     process: ps.DataProcess,
     dispatch_inputs: AnalysisDispatchModel,
     **params,
 ) -> ps.DataProcess:
-    """Construct a processing record by
+    """Construct an analysis process record by
        combining Code Ocean metadata with analysis job data.
 
     Args:
-        dispatch_inputs: AnalysisDispatchModel
-        containing analysis metadata including:
+        dispatch_inputs: AnalysisDispatchModel containing analysis metadata including:
             - s3_location (str): S3 URL for input data
         **params: Additional parameters passed to the process
 
     Returns:
-        ps.DataProcess: Constructed processing record with combined metadata
+        ps.DataProcess: analysis process record with combined metadata
     """
 
     # add s3_location and parameters from analysis_job_dict
@@ -134,6 +133,30 @@ def construct_processing_record(
     return process
 
 
+def analysis_pipeline_processing_metadata(
+    base_process: ps.DataProcess,
+) -> ps.Processing:
+    """Construct a processing record for the analysis pipeline run,
+    adding pipeline metadata if available.
+
+     Args:
+        base_process: The base process record to update with pipeline metadata
+    Returns:
+        ps.Processing: The updated processing record with pipeline metadata
+    """
+    processing = ps.Processing.create_with_sequential_process_graph(
+        data_processes=[base_process]
+    )
+    pipeline_id = os.getenv("CO_PIPELINE_ID")
+    if pipeline_id:
+        pipeline_process = get_codeocean_process_metadata(
+            capsule_id=pipeline_id, extra_params_from_process_name="dispatch"
+        )
+        processing.data_processes[0].pipeline_name = pipeline_process.name
+        processing.pipelines = [pipeline_process.code]
+    return processing.model_validate(processing)
+
+
 def _initialize_codeocean_client() -> CodeOcean:
     """Initialize Code Ocean client using environment variables.
 
@@ -153,9 +176,10 @@ def _initialize_codeocean_client() -> CodeOcean:
 
 
 def get_codeocean_process_metadata(
-    capsule_id: Optional[str] = None,
     computation_id: Optional[str] = None,
-    from_dispatch: bool = False,
+    capsule_id: Optional[str] = None,
+    capsule_name: Optional[str] = None,
+    extra_params_from_process_name: Optional[str] = None,
 ) -> ps.DataProcess:
     """
     Query Code Ocean API for metadata
@@ -165,9 +189,6 @@ def get_codeocean_process_metadata(
     # Initialize the Code Ocean client and get computation ID
     client = _initialize_codeocean_client()
     computation_id = computation_id or os.getenv("CO_COMPUTATION_ID")
-    capsule_id = capsule_id or os.getenv("CO_CAPSULE_ID")
-
-    # Get the current computation details
     computation = client.computations.get_computation(computation_id)
 
     # Extract relevant metadata from the computation
@@ -182,24 +203,39 @@ def get_codeocean_process_metadata(
         ),
     )
 
-    # find the component process for the capsule
-    if not capsule_id:
-        raise ValueError(
-            "Capsule ID must be provided or set in environment variable CO_CAPSULE_ID"
-        )
+    if capsule_id is None and capsule_name is None:
+        capsule_id = os.getenv("CO_CAPSULE_ID")
+        if capsule_id is None:
+            raise ValueError(
+                "capsule_id or environment variable CO_CAPSULE_ID must be provided"
+            )
+
     version = None
+    # find the component process for the capsule
     if computation.processes:
-        for i, proc in enumerate(computation.processes):
-            # if run from dispatch capsule, match the other process in the pipeline
-            # TODO: this needs a more robust condition
-            if (proc.capsule_id == capsule_id) ^ from_dispatch:
-                parameters = extract_parameters(proc)
-                version = proc.version
-                break
-    elif not from_dispatch:
-        parameters = extract_parameters(computation)
-    else:
         parameters = {}
+        # ok to not match, capsule_id may be for pipeline not component
+        # (in this case there seems to be no explicit record of the version run!?)
+        proc = _get_matching_computation_subprocess(
+            computation, capsule_id, capsule_name
+        )
+        if proc:
+            parameters = extract_parameters(proc)
+            version = proc.version
+            capsule_id = proc.capsule_id
+        if extra_params_from_process_name:
+            extra_proc = _get_matching_computation_subprocess(
+                computation,
+                capsule_id=None,
+                capsule_name=extra_params_from_process_name,
+            )
+            if extra_proc:
+                extra_parameters = extract_parameters(extra_proc)
+                parameters.update(extra_parameters)
+    else:  # not a pipeline run, get parameters from computation level
+        parameters = extract_parameters(computation)
+    if capsule_id is None:
+        raise ValueError("Could not find matching process for capsule ID")
 
     capsule = client.capsules.get_capsule(capsule_id)
     process.name = capsule.name
@@ -221,7 +257,7 @@ def get_codeocean_process_metadata(
     else:
         input_data = []
 
-    code = ps.Code(
+    process.code = ps.Code(
         name=capsule.name,
         url=get_capsule_url(capsule),
         version=version,
@@ -229,9 +265,34 @@ def get_codeocean_process_metadata(
         parameters=parameters,
         input_data=input_data,
     )
-
-    process.code = code
     return process.model_validate(process)
+
+
+def _get_matching_computation_subprocess(
+    computation: Computation,
+    capsule_id: Optional[str],
+    capsule_name: Optional[str],
+    raise_on_not_found: bool = False,
+) -> Optional[PipelineProcess]:
+    """Helper function to find the subprocess within a computation
+    that matches either the capsule ID or name."""
+    if not computation.processes:
+        return None
+    matched_process = [
+        proc
+        for proc in computation.processes
+        if (proc.capsule_id == capsule_id)
+        or (capsule_name is not None and capsule_name in proc.name)
+    ]
+    if len(matched_process) == 0:
+        if raise_on_not_found:
+            raise ValueError(f"No process found for {capsule_id=} or {capsule_name=}")
+        return None
+    elif len(matched_process) > 1:
+        raise ValueError(
+            f"Multiple processes found for {capsule_id=} or {capsule_name=}"
+        )
+    return matched_process[0]
 
 
 def _run_git_command(command: List[str]) -> str:
@@ -291,14 +352,20 @@ def get_capsule_commit_hash(capsule: Capsule, branch="HEAD") -> str:
     return git_commit_hash.split()[0]  # Return the commit hash part
 
 
-def get_latest_release(capsule: Capsule) -> Optional[str]:
+def get_latest_release(capsule: Capsule) -> Optional[dict]:
+    """Get the latest release information for a specific capsule.
+    Args:
+        capsule: Capsule object
+    Returns:
+        dict: Latest release information, or None if no releases found
+    """
     if not capsule.release_capsule:
         return None
     client = _initialize_codeocean_client()
     release_capsule = client.capsules.get_capsule(capsule.release_capsule)
     versions = release_capsule.versions
     latest = versions[-1]
-    return latest["major_version"], latest["release_time"]
+    return latest
 
 
 def get_commits_since_release(
@@ -364,11 +431,12 @@ def get_capsule_version_ignoring_patches(
         if there are non-patch commits since release
     """
     patch_list = patch_list.split(",") if patch_list else []
-    version, time = get_latest_release(capsule)
-    if version is not None:
+    release = get_latest_release(capsule)
+    if release is not None:
+        time = release["release_time"]
         commits = get_commits_since_release(capsule, release_time=time, branch=branch)
         if not set(commits).difference(set(patch_list)):
-            return version
+            return release["major_version"]
     return None
 
 
@@ -533,7 +601,7 @@ def get_docdb_client(host=None, database=None, collection=None) -> MetadataDbCli
 
 
 def write_results_and_metadata(
-    process: ps.DataProcess,
+    processing: ps.Processing,
     s3_bucket: Optional[str] = None,
     dry_run: bool = False,
 ) -> None:
@@ -542,13 +610,13 @@ def write_results_and_metadata(
     Process record is written to docdb
 
     Args:
-        process: Processing record
+        processing: Processing record
         s3_bucket: Bucket to copy results to
 
     """
     if s3_bucket is None:
         s3_bucket = os.getenv("ANALYSIS_BUCKET")
-    metadata, docdb_id = create_results_metadata(process, s3_bucket)
+    metadata, docdb_id = create_results_metadata(processing, s3_bucket)
     with open("/results/metadata.nd.json", "w") as f:
         f.write(metadata.model_dump_json(indent=2))
     if not dry_run:

@@ -18,7 +18,7 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
 from analysis_pipeline_utils.metadata import (
-    construct_processing_record,
+    update_analysis_process,
     docdb_record_exists,
     get_codeocean_process_metadata,
 )
@@ -448,11 +448,12 @@ def check_task_parameters(
     """
     if fixed_analysis_params is None:
         fixed_analysis_params = {}
-    base_process = get_codeocean_process_metadata(from_dispatch=True)
+    if os.getenv("CO_PIPELINE_ID"):
+        base_process = get_codeocean_process_metadata(capsule_name="wrapper")
+    else:  # test run, get metadata for current capsule
+        base_process = get_codeocean_process_metadata()
     for model in input_model_list:
-        process = construct_processing_record(
-            base_process, model, **fixed_analysis_params
-        )
+        process = update_analysis_process(base_process, model, **fixed_analysis_params)
         if filter_processed and docdb_record_exists(process.code):
             logger.info(
                 f"Skipping already processed job for assets {model.docdb_record_id}"

@@ -506,7 +506,7 @@ def test_write_input_model_list_invalid_group_size(tmp_path):
 
 
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.docdb_record_exists")
-@patch("analysis_pipeline_utils.utils_analysis_dispatch.construct_processing_record")
+@patch("analysis_pipeline_utils.utils_analysis_dispatch.update_analysis_process")
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.get_codeocean_process_metadata")
 def test_check_task_parameters_skips_processed(
     mock_get_process,
@@ -541,7 +541,7 @@ def test_check_task_parameters_skips_processed(
 
 
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.docdb_record_exists")
-@patch("analysis_pipeline_utils.utils_analysis_dispatch.construct_processing_record")
+@patch("analysis_pipeline_utils.utils_analysis_dispatch.update_analysis_process")
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.get_codeocean_process_metadata")
 def test_check_task_parameters_no_filter(mock_get_process, mock_construct, mock_exists):
     """Yields all jobs when filter_processed is False."""

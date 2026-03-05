@@ -46,7 +46,7 @@ def copy_results_to_s3(metadata: Metadata, results_path="/results"):
 
 
 def create_results_metadata(
-    process: ps.DataProcess, s3_bucket: str
+    processing: ps.Processing, s3_bucket: str
 ) -> tuple[Metadata, str]:
     """
     Create metadata for the results of a processing job.
@@ -60,16 +60,14 @@ def create_results_metadata(
         s3_prefix: hash based on processing.code field
         that will be used as id in docdb
     """
-    s3_prefix = processing_prefix(process.code)
+    s3_prefix = processing_prefix(processing.data_processes[0].code)
     s3_url = f"s3://{s3_bucket}/{s3_prefix}"
 
     # suppress no data description warning
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning)
         md = Metadata(
-            processing=ps.Processing.create_with_sequential_process_graph(
-                data_processes=[process]
-            ),
+            processing=processing,
             # TODO: name matching prefix or something else?
             name=s3_prefix,
             location=s3_url,

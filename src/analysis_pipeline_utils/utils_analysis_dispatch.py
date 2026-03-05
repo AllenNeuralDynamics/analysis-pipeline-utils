@@ -6,7 +6,6 @@ import csv
 import json
 import logging
 import os
-from sys import version
 import uuid
 from pathlib import Path
 from requests.exceptions import HTTPError

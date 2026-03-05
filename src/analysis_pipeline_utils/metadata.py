@@ -448,6 +448,10 @@ def get_capsule_url(capsule: Capsule) -> str:
     Returns:
         str: URL of the capsule
     """
+    # github url is preferred, but its currently unreliable in duplicated capsules
+    if capsule.cloned_from_url and capsule.original_capsule:
+        return capsule.cloned_from_url
+
     domain = os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
     return f"https://{domain}/capsule/{capsule.slug}"
 

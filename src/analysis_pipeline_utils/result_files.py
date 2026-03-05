@@ -2,7 +2,9 @@
 Functions for interacting with results
 from analysis
 """
+
 import hashlib
+import warnings
 from typing import Dict
 
 import aind_data_schema.core.processing as ps
@@ -44,7 +46,7 @@ def copy_results_to_s3(metadata: Metadata, results_path="/results"):
 
 
 def create_results_metadata(
-    process: ps.DataProcess, s3_bucket: str
+    processing: ps.Processing, s3_bucket: str
 ) -> tuple[Metadata, str]:
     """
     Create metadata for the results of a processing job.
@@ -58,31 +60,33 @@ def create_results_metadata(
         s3_prefix: hash based on processing.code field
         that will be used as id in docdb
     """
-    s3_prefix = processing_prefix(process)
+    s3_prefix = processing_prefix(processing.data_processes[0].code)
     s3_url = f"s3://{s3_bucket}/{s3_prefix}"
 
-    md = Metadata(
-        processing=ps.Processing.create_with_sequential_process_graph(
-            data_processes=[process]
-        ),
-        # TODO: name matching prefix or something else?
-        name=s3_prefix,
-        location=s3_url,
-    )
+    # suppress no data description warning
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        md = Metadata(
+            processing=processing,
+            # TODO: name matching prefix or something else?
+            name=s3_prefix,
+            location=s3_url,
+        )
     return md, s3_prefix
 
 
-def processing_prefix(process: ps.DataProcess) -> str:
+def processing_prefix(code: ps.Code) -> str:
     """
     Generate a unique ID for the processing based on its metadata.
 
     Args:
-        process: Processing record
+        code: processing code record
     Returns:
         The hashed string from the model
     """
+    code = ps.Code.model_validate(code)
     # updated to use process.code
     # TODO: hash on input data + parameters from process.code
-    process_metadata = process.code.model_dump_json().encode("utf-8")
+    process_metadata = code.model_dump_json().encode("utf-8")
 
     return hashlib.sha256(process_metadata).hexdigest()

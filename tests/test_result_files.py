@@ -86,7 +86,8 @@ def test_create_results_metadata(mock_process):
     """Test that create_results_metadata returns a valid Metadata object."""
     s3_bucket = "test-bucket"
 
-    result, docdb_id = create_results_metadata(mock_process, s3_bucket)
+    processing = ps.Processing.create_with_sequential_process_graph([mock_process])
+    result, docdb_id = create_results_metadata(processing, s3_bucket)
 
     # Check that the result is a Metadata object
     assert isinstance(result, Metadata)
@@ -96,7 +97,7 @@ def test_create_results_metadata(mock_process):
     assert result.processing.data_processes[0] == mock_process
 
     # Check that the name matches the expected prefix
-    expected_prefix = processing_prefix(mock_process)
+    expected_prefix = processing_prefix(mock_process.code)
     assert result.name == expected_prefix
     assert docdb_id == expected_prefix
 
@@ -107,8 +108,8 @@ def test_create_results_metadata(mock_process):
 def test_processing_prefix_consistency(mock_process):
     """Test that _processing_prefix returns
     consistent results for the same input."""
-    prefix1 = processing_prefix(mock_process)
-    prefix2 = processing_prefix(mock_process)
+    prefix1 = processing_prefix(mock_process.code)
+    prefix2 = processing_prefix(mock_process.code)
 
     assert prefix1 == prefix2
     assert len(prefix1) == 64  # SHA-256 hash length in hex
@@ -127,8 +128,8 @@ def test_processing_prefix_uniqueness():
         url="https://github.com/test/repo", name="process2", version="1.0"
     )
 
-    prefix1 = processing_prefix(process1)
-    prefix2 = processing_prefix(process2)
+    prefix1 = processing_prefix(process1.code)
+    prefix2 = processing_prefix(process2.code)
 
     assert prefix1 != prefix2
 
@@ -138,4 +139,4 @@ def test_processing_prefix_implementation(mock_process):
     process_str_json = mock_process.code.model_dump_json().encode("utf-8")
     expected_hash = hashlib.sha256(process_str_json).hexdigest()
 
-    assert processing_prefix(mock_process) == expected_hash
+    assert processing_prefix(mock_process.code) == expected_hash

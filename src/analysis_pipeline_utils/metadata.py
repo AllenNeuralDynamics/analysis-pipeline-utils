@@ -1,10 +1,4 @@
-"""
-suggested process for analysis wrapper capsule:
-    process = construct_processing_record(dispatch_inputs)
-    if not docdb_record_exists(process):
-    ... run processing
-    write_results_and_metadata(process, ANALYSIS_BUCKET)
-"""
+"""Utility functions for handling metadata related operations"""
 
 import logging
 import os
@@ -19,6 +13,7 @@ from aind_data_schema.components.identifiers import CombinedData, DataAsset
 from aind_data_schema.core.metadata import Metadata
 from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
+from codeocean.capsule import Capsule
 
 from .analysis_dispatch_model import AnalysisDispatchModel
 from .result_files import (
@@ -26,9 +21,6 @@ from .result_files import (
     create_results_metadata,
     processing_prefix,
 )
-
-
-PARAM_PREFIX = "param_"
 
 
 def get_metadata_for_records(
@@ -52,14 +44,12 @@ def get_metadata_for_records(
     """
     record_ids = analysis_dispatch_input.docdb_record_id
     metadata_records = []
-    docdb_client = get_docdb_client()
+    docdb_client = MetadataDbClient(host=os.getenv("DOCDB_HOST"))
 
     for record_id in record_ids:
         record = get_record_from_docdb(docdb_client, record_id)
         if not record:
-            logging.warning(
-                f"No record found for id {record_id}. Skipping adding this"
-            )
+            logging.warning(f"No record found for id {record_id}. Skipping adding this")
             continue
 
         metadata_records.append(record)
@@ -78,48 +68,93 @@ def extract_parameters(
     Returns:
         Dict[str, Any]: Parameters specific to the target capsule
     """
+
+    num_prefix = "ordered_param_"
     if not process.parameters:
         return {}
     return {
-        param.name if param.name else f"{PARAM_PREFIX}{i}": param.value
+        param.name if param.name else f"{num_prefix}{i}": param.value
         for i, param in enumerate(process.parameters)
         if param.value
     }
 
 
-def construct_processing_record(
+def update_analysis_process(
+    process: ps.DataProcess,
     dispatch_inputs: AnalysisDispatchModel,
-    **kwargs,
+    **params,
 ) -> ps.DataProcess:
-    """Construct a processing record by
+    """Construct an analysis process record by
        combining Code Ocean metadata with analysis job data.
 
     Args:
-        dispatch_inputs: AnalysisDispatchModel
-        containing analysis metadata including:
+        dispatch_inputs: AnalysisDispatchModel containing analysis metadata including:
             - s3_location (str): S3 URL for input data
-        **kwargs: Additional parameters passed to the process
+        **params: Additional parameters passed to the process
 
     Returns:
-        ps.DataProcess: Constructed processing record with combined metadata
+        ps.DataProcess: analysis process record with combined metadata
     """
-    process = query_code_ocean_metadata()
-    # add s3_location and parameters from analysis_job_dict
 
+    # add s3_location and parameters from analysis_job_dict
     new_inputs = [DataAsset(url=url) for url in dispatch_inputs.s3_location]
     if process.code.input_data is None:
         process.code.input_data = new_inputs
     else:
         process.code.input_data.extend(new_inputs)
 
+    # remove dry_run from parameters
+    params.pop("dry_run", None)
+
     # add file location as a tracked parameter
     if dispatch_inputs.file_location:
-        kwargs.update(file_location=dispatch_inputs.file_location)
+        params.update(file_location=dispatch_inputs.file_location)
 
-    # TODO: allow additional parameters from the dispatch also?
-    process.code.parameters = process.code.parameters.model_copy(update=kwargs)
+    if dispatch_inputs.query:
+        if process.notes is None:
+            process.notes = ""
+        else:
+            process.notes += "\n"
+        process.notes += f"Query used to retrieve data assets: {dispatch_inputs.query}"
 
+    if dispatch_inputs.analysis_code:
+        old_params = dispatch_inputs.analysis_code.parameters.model_dump()
+    else:
+        old_params = {}
+
+    if dispatch_inputs.distributed_parameters:
+        distributed_params = dispatch_inputs.distributed_parameters
+    else:
+        distributed_params = {}
+
+    process.code.parameters = process.code.parameters.model_copy(
+        update=(old_params | params | distributed_params)
+    )
     return process
+
+
+def analysis_pipeline_processing_metadata(
+    base_process: ps.DataProcess,
+) -> ps.Processing:
+    """Construct a processing record for the analysis pipeline run,
+    adding pipeline metadata if available.
+
+     Args:
+        base_process: The base process record to update with pipeline metadata
+    Returns:
+        ps.Processing: The updated processing record with pipeline metadata
+    """
+    processing = ps.Processing.create_with_sequential_process_graph(
+        data_processes=[base_process]
+    )
+    pipeline_id = os.getenv("CO_PIPELINE_ID")
+    if pipeline_id:
+        pipeline_process = get_codeocean_process_metadata(
+            capsule_id=pipeline_id, extra_params_from_process_name="dispatch"
+        )
+        processing.data_processes[0].pipeline_name = pipeline_process.name
+        processing.pipelines = [pipeline_process.code]
+    return processing.model_validate(processing)
 
 
 def _initialize_codeocean_client() -> CodeOcean:
@@ -131,21 +166,20 @@ def _initialize_codeocean_client() -> CodeOcean:
     Raises:
         ValueError: If required environment variables are missing
     """
-    domain = (
-        os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
-    )
+    domain = os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
     token = os.getenv("CODEOCEAN_API_TOKEN")
 
     if not token:
-        raise ValueError(
-            "CODEOCEAN_API_TOKEN environment variable is required"
-        )
+        raise ValueError("CODEOCEAN_API_TOKEN environment variable is required")
 
     return CodeOcean(domain=f"https://{domain}", token=token)
 
 
-def query_code_ocean_metadata(
+def get_codeocean_process_metadata(
+    computation_id: Optional[str] = None,
     capsule_id: Optional[str] = None,
+    capsule_name: Optional[str] = None,
+    extra_params_from_process_name: Optional[str] = None,
 ) -> ps.DataProcess:
     """
     Query Code Ocean API for metadata
@@ -154,47 +188,67 @@ def query_code_ocean_metadata(
     """
     # Initialize the Code Ocean client and get computation ID
     client = _initialize_codeocean_client()
-    computation_id = os.getenv("CO_COMPUTATION_ID")
-
-    # Get the current computation details
+    computation_id = computation_id or os.getenv("CO_COMPUTATION_ID")
     computation = client.computations.get_computation(computation_id)
 
     # Extract relevant metadata from the computation
     process = ps.DataProcess.model_construct(
         # computation.name likely only set for named runs
+        experimenters=[os.getenv("CODEOCEAN_EMAIL", "unknown")],
         process_type=ps.ProcessName.ANALYSIS,
-        process_stage=ps.ProcessStage.ANALYSIS,
+        stage=ps.ProcessStage.ANALYSIS,
         start_date_time=datetime.fromtimestamp(computation.created),
         end_date_time=datetime.fromtimestamp(
             computation.created + computation.run_time
         ),
     )
-    # not sure if this is the best way to get this info
-    # but not recorded in computation object?
-    pipeline = client.capsules.get_capsule(
-        os.getenv("CO_PIPELINE_ID") or os.getenv("CO_CAPSULE_ID")
-    )
-    # TODO: this owner attribute is just a CO UUID
-    process.experimenters = [pipeline.owner]
-    process.name = pipeline.name
 
-    parameters = extract_parameters(computation)
-    # find the component process for this capsule or specified capsule ID
-    capsule_id = capsule_id or os.getenv("CO_CAPSULE_ID")
-    if not capsule_id:
-        raise ValueError(
-            "Capsule ID must be provided or "
-            "set in environment variable CO_CAPSULE_ID"
-        )
+    if capsule_id is None and capsule_name is None:
+        capsule_id = os.getenv("CO_CAPSULE_ID")
+        if capsule_id is None:
+            raise ValueError(
+                "capsule_id or environment variable CO_CAPSULE_ID must be provided"
+            )
+
+    version = None
+    # find the component process for the capsule
     if computation.processes:
-        component_process = next(
-            proc
-            for proc in computation.processes
-            if proc.capsule_id == capsule_id
+        parameters = {}
+        # ok to not match, capsule_id may be for pipeline not component
+        # (in this case there seems to be no explicit record of the version run!?)
+        proc = _get_matching_computation_subprocess(
+            computation, capsule_id, capsule_name
         )
-        parameters.update(extract_parameters(component_process))
-        # version = str(component_process.version)
+        if proc:
+            parameters = extract_parameters(proc)
+            version = proc.version
+            capsule_id = proc.capsule_id
+        if extra_params_from_process_name:
+            extra_proc = _get_matching_computation_subprocess(
+                computation,
+                capsule_id=None,
+                capsule_name=extra_params_from_process_name,
+            )
+            if extra_proc:
+                extra_parameters = extract_parameters(extra_proc)
+                parameters.update(extra_parameters)
+    else:  # not a pipeline run, get parameters from computation level
+        parameters = extract_parameters(computation)
+    if capsule_id is None:
+        raise ValueError("Could not find matching process for capsule ID")
+
     capsule = client.capsules.get_capsule(capsule_id)
+    process.name = capsule.name
+    if not version:
+        branch = os.getenv("CO_CAPSULE_BRANCH", "HEAD")
+        patch_list = os.getenv("PATCH_COMMITS")
+        version = get_capsule_version_ignoring_patches(
+            capsule, patch_list=patch_list, branch=branch
+        )
+        hash = get_capsule_commit_hash(capsule, branch)
+        version = version or hash
+        process.notes = f"Git commit hash: {hash}"
+
     if computation.data_assets:
         input_data = [
             DataAsset(url=get_data_asset_url(client, asset.id))
@@ -202,17 +256,43 @@ def query_code_ocean_metadata(
         ]
     else:
         input_data = []
-    code = ps.Code(
-        url=capsule.cloned_from_url or "",
-        name=capsule.name or "",
-        version=get_version_from_git_remote(capsule.slug),
+
+    process.code = ps.Code(
+        name=capsule.name,
+        url=get_capsule_url(capsule),
+        version=version,
         run_script="code/run",
         parameters=parameters,
         input_data=input_data,
     )
+    return process.model_validate(process)
 
-    process.code = code
-    return process
+
+def _get_matching_computation_subprocess(
+    computation: Computation,
+    capsule_id: Optional[str],
+    capsule_name: Optional[str],
+    raise_on_not_found: bool = False,
+) -> Optional[PipelineProcess]:
+    """Helper function to find the subprocess within a computation
+    that matches either the capsule ID or name."""
+    if not computation.processes:
+        return None
+    matched_process = [
+        proc
+        for proc in computation.processes
+        if (proc.capsule_id == capsule_id)
+        or (capsule_name is not None and capsule_name in proc.name)
+    ]
+    if len(matched_process) == 0:
+        if raise_on_not_found:
+            raise ValueError(f"No process found for {capsule_id=} or {capsule_name=}")
+        return None
+    elif len(matched_process) > 1:
+        raise ValueError(
+            f"Multiple processes found for {capsule_id=} or {capsule_name=}"
+        )
+    return matched_process[0]
 
 
 def _run_git_command(command: List[str]) -> str:
@@ -224,41 +304,15 @@ def _run_git_command(command: List[str]) -> str:
     Returns:
         str: Command output or default value if command fails
     """
-    result = subprocess.run(
-        command, capture_output=True, text=True, check=True
-    )
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
     return result.stdout.strip()
 
 
-def get_code_metadata_from_git() -> ps.Code:
-    """Get git metadata for the current repository.
+def _get_git_remote_url(capsule_slug: str) -> str:
+    """Get the git remote URL for the specified capsule.
 
-    Returns:
-        ps.Code: Code object with git metadata
-    """
-    # Use safer command list format instead of shell=True
-    git_remote_url = _run_git_command(["git", "remote", "get-url", "origin"])
-    git_commit_hash = _run_git_command(["git", "rev-parse", "HEAD"])
-
-    # Get repo name from remote URL instead of shell command
-    repo_name = (
-        git_remote_url.split("/")[-1].replace(".git", "")
-        if git_remote_url
-        else ""
-    )
-
-    code = ps.Code(
-        # git remote URL from shell command
-        url=git_remote_url,
-        version=git_commit_hash,
-        run_script="code/run",
-        name=repo_name,
-    )
-    return code
-
-
-def _get_git_remote_url() -> str:
-    """Get the git remote URL for the current repository.
+    Args:
+        capsule_slug: Slug of the capsule
 
     Returns:
         str: Remote URL of the git repository
@@ -268,9 +322,7 @@ def _get_git_remote_url() -> str:
     domain = os.getenv("GIT_HOST")
     if not all([credentials, domain]):
         try:
-            username = os.getenv("CODEOCEAN_EMAIL") or _run_git_command(
-                ["git", "config", "user.email"]
-            )
+            username = os.getenv("CODEOCEAN_EMAIL")
             username = username.replace("@", "%40")
             token = os.getenv("CODEOCEAN_API_TOKEN")
             credentials = f"{username}:{token}"
@@ -280,29 +332,124 @@ def _get_git_remote_url() -> str:
                 "GIT_ACCESS_TOKEN or CODEOCEAN_API_TOKEN "
                 "environment variable is required"
             )
-    return f"https://{credentials}@{domain}"
+    return f"https://{credentials}@{domain}/capsule-{capsule_slug}.git"
 
 
-def get_version_from_git_remote(capsule_slug: str) -> str:
+def get_capsule_commit_hash(capsule: Capsule, branch="HEAD") -> str:
     """Get the git version for a specific capsule from the remote repository.
 
     Args:
-        capsule_slug: Slug ID of the capsule to
-        retrieve metadata for (7-digit numeric ID)
+        capsule: Capsule object
+        branch: Branch name or 'HEAD' to specify which version to retrieve
 
     Returns:
         str: Commit hash of the HEAD of the capsule's git repository
     """
-
-    git_remote_url = f"{_get_git_remote_url()}/capsule-{capsule_slug}.git"
-    git_commit_hash = _run_git_command(
-        ["git", "ls-remote", git_remote_url, "HEAD"]
-    )
+    git_remote_url = _get_git_remote_url(capsule.slug)
+    git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, branch])
     if not git_commit_hash:
-        raise ValueError(
-            f"Could not retrieve git commit hash for capsule {capsule_slug}"
-        )
+        raise ValueError(f"Could not retrieve git commit hash for capsule {capsule}")
     return git_commit_hash.split()[0]  # Return the commit hash part
+
+
+def get_latest_release(capsule: Capsule) -> Optional[dict]:
+    """Get the latest release information for a specific capsule.
+    Args:
+        capsule: Capsule object
+    Returns:
+        dict: Latest release information, or None if no releases found
+    """
+    if not capsule.release_capsule:
+        return None
+    client = _initialize_codeocean_client()
+    release_capsule = client.capsules.get_capsule(capsule.release_capsule)
+    versions = release_capsule.versions
+    latest = versions[-1]
+    return latest
+
+
+def get_commits_since_release(
+    capsule: Capsule, release_time: str, branch="HEAD"
+) -> List[str]:
+    """Get commits since the release time from the capsule's git repository.
+
+    Args:
+        capsule: Capsule object
+        release_time: ISO 8601 timestamp to filter commits since
+
+    Returns:
+        List of commit hashes since the release time
+    """
+    import tempfile
+
+    git_remote_url = _get_git_remote_url(capsule.slug)
+
+    # Create a temporary directory for the bare clone
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Shallow bare clone (only commits, no working tree)
+        # --depth can be adjusted or removed if full history is needed
+        _run_git_command(
+            [
+                "git",
+                "clone",
+                "--bare",
+                "--single-branch",
+                "--branch",
+                branch,
+                "--shallow-since",
+                release_time,
+                git_remote_url,
+                tmpdir,
+            ]
+        )
+
+        # Run git log in the bare repository
+        result = _run_git_command(
+            [
+                "git",
+                "--git-dir",
+                tmpdir,
+                "log",
+                f"--since={release_time}",
+                "--pretty=format:%H",
+            ]
+        )
+
+        return result.splitlines()
+
+
+def get_capsule_version_ignoring_patches(
+    capsule: Capsule, branch="HEAD", patch_list: Optional[str] = None
+) -> Optional[str]:
+    """Get the capsule version from the latest release, ignoring patch commits.
+    Args:
+        capsule: Capsule object
+        branch: Branch name or 'HEAD' to specify which version to retrieve
+        patch_list: Optional comma-separated list of patch commit hashes to ignore
+    Returns:
+        str: Version of the capsule based on the latest release, or None
+        if there are non-patch commits since release
+    """
+    patch_list = patch_list.split(",") if patch_list else []
+    release = get_latest_release(capsule)
+    if release is not None:
+        time = release["release_time"]
+        commits = get_commits_since_release(capsule, release_time=time, branch=branch)
+        if not set(commits).difference(set(patch_list)):
+            return release["major_version"]
+    return None
+
+
+def get_capsule_url(capsule: Capsule) -> str:
+    """Get the URL for a specific capsule.
+
+    Args:
+        capsule: Capsule object
+    Returns:
+        str: URL of the capsule
+    """
+    domain = os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
+    return f"https://{domain}/capsule/{capsule.slug}"
 
 
 def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
@@ -325,8 +472,7 @@ def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
         return f"s3://{bucket}/{prefix}"
     else:
         raise ValueError(
-            "Data asset source bucket "
-            f"{data_asset.source_bucket} not supported."
+            f"Data asset source bucket {data_asset.source_bucket} not supported."
         )
 
 
@@ -345,18 +491,18 @@ def write_to_docdb(metadata: Metadata, hash: str):
     return response
 
 
-def docdb_record_exists(processing: ps.DataProcess) -> bool:
+def docdb_record_exists(process_code: ps.Code) -> bool:
     """
     Check the document database for
     whether a record already exists matching the analysis metadata
 
     Args:
-        processing: Processing record to check
+        process_code: Processing code record to check
 
     Returns:
         True if record exists or False if not
     """
-    responses = get_docdb_records(processing)
+    responses = get_docdb_records(process_code)
 
     if len(responses) == 1:
         return True
@@ -370,20 +516,20 @@ def docdb_record_exists(processing: ps.DataProcess) -> bool:
         return False
 
 
-def get_docdb_records(processing: ps.DataProcess) -> List[Dict[str, Any]]:
+def get_docdb_records(process_code: ps.Code) -> List[Dict[str, Any]]:
     """
     Get the document database record for the given processing object
 
     Args:
-        processing: Processing record to check
+        process_code: Processing code record to check
 
     Returns:
         List of dictionary records
     """
     client: MetadataDbClient = get_docdb_client()
 
-    docdb_id = processing_prefix(processing)
-    filter_query = {"_id": docdb_id}
+    docdb_id = processing_prefix(process_code)
+    filter_query = {"name": docdb_id}
 
     responses = client.retrieve_docdb_records(filter_query=filter_query)
     return responses
@@ -405,9 +551,7 @@ def get_docdb_records_partial(
     if input_data_locations:
         input_data = [DataAsset(url=url) for url in input_data_locations]
     input_data_dict = (
-        [asset.model_dump(mode="json") for asset in input_data]
-        if input_data
-        else None
+        [asset.model_dump(mode="json") for asset in input_data] if input_data else None
     )
 
     code_prefix = "processing.data_processes.0.code"
@@ -438,9 +582,7 @@ def get_docdb_records_partial(
     return responses
 
 
-def get_docdb_client(
-    host=None, database=None, collection=None
-) -> MetadataDbClient:
+def get_docdb_client(host=None, database=None, collection=None) -> MetadataDbClient:
     """
     Get a client for the document database
     """
@@ -459,18 +601,22 @@ def get_docdb_client(
 
 
 def write_results_and_metadata(
-    process: ps.DataProcess, s3_bucket: str, dry_run: bool = False
+    processing: ps.Processing,
+    s3_bucket: Optional[str] = None,
+    dry_run: bool = False,
 ) -> None:
     """
     Writes output and copies to s3.
     Process record is written to docdb
 
     Args:
-        process: Processing record
+        processing: Processing record
         s3_bucket: Bucket to copy results to
 
     """
-    metadata, docdb_id = create_results_metadata(process, s3_bucket)
+    if s3_bucket is None:
+        s3_bucket = os.getenv("ANALYSIS_BUCKET")
+    metadata, docdb_id = create_results_metadata(processing, s3_bucket)
     with open("/results/metadata.nd.json", "w") as f:
         f.write(metadata.model_dump_json(indent=2))
     if not dry_run:

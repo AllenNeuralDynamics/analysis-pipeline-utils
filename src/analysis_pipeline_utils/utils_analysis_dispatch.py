@@ -5,6 +5,7 @@ Functions for analysis dispatcher
 import csv
 import json
 import logging
+import os
 import uuid
 from pathlib import Path
 from requests.exceptions import HTTPError
@@ -12,22 +13,25 @@ from typing import Any, Iterator, List, Optional, Union
 
 from s3fs import S3FileSystem
 
+from aind_data_access_api.document_db import MetadataDbClient
 from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
-from analysis_pipeline_utils.metadata import get_docdb_client
+from analysis_pipeline_utils.metadata import (
+    update_analysis_process,
+    docdb_record_exists,
+    get_codeocean_process_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
-API_GATEWAY_HOST = "api.allenneuraldynamics.org"
-DATABASE = "metadata_index"
-COLLECTION = "data_assets"
 
-docdb_api_client = get_docdb_client(
-    host=API_GATEWAY_HOST,
-    database=DATABASE,
-    collection=COLLECTION,
-)
+# TODO: move this to pydantic-settings, add version option
+def _docdb_api_client():
+    """Returns the docdb api client"""
+    return MetadataDbClient(host=os.getenv("DOCDB_HOST"))
+
+
 fs = S3FileSystem(use_listings_cache=False)
 
 
@@ -127,6 +131,7 @@ def query_data_assets(
                     "_id": [f"${field}" for field in group_by],
                     "s3_location": {"$push": "$location"},
                     "docdb_record_id": {"$push": "$_id"},
+                    "asset_name": {"$push": "$name"},
                     **{
                         f"{field_names[i]}": {"$first": f"${field}"}
                         for i, field in enumerate(group_by)
@@ -156,12 +161,13 @@ def query_data_assets(
                 "$project": {
                     "s3_location": ["$location"],
                     "docdb_record_id": ["$_id"],
+                    "asset_name": ["$name"],
                 }
             }
         )
     logger.info(f"Aggregation pipeline: {pipeline}")
     try:
-        response = docdb_api_client.aggregate_docdb_records(pipeline=pipeline)
+        response = _docdb_api_client().aggregate_docdb_records(pipeline=pipeline)
     # print body of HTTP error
     except HTTPError as e:
         logger.error(f"Error aggregating DocDB records: {e}")
@@ -282,6 +288,8 @@ def get_data_asset_records(
         query_str = json.dumps(query)
         for r in records:
             r["query"] = query_str
+    else:
+        raise ValueError("No data asset input method specified")
 
     logger.info(f"Returned {len(records)} records")
     return [AnalysisDispatchModel(**record) for record in records]
@@ -327,8 +335,10 @@ def get_asset_file_path_records(
     s3_file_paths = []
 
     s3_paths_to_use = []
+    asset_names_to_use = []
     docdb_ids_to_use = []
     data_asset_paths = record.s3_location
+    asset_names = record.asset_name
     docdb_record_ids = record.docdb_record_id
     if split_files and len(data_asset_paths) > 1:
         raise ValueError(
@@ -344,6 +354,7 @@ def get_asset_file_path_records(
 
         # add records where file extension has been found
         s3_paths_to_use.append(location)
+        asset_names_to_use.append(asset_names[index])
         docdb_ids_to_use.append(docdb_record_ids[index])
     if not s3_paths_to_use:
         return []
@@ -356,20 +367,21 @@ def get_asset_file_path_records(
     return [
         AnalysisDispatchModel(
             s3_location=s3_paths_to_use,
+            asset_name=asset_names_to_use,
             file_location=s3_file_paths,
             docdb_record_id=docdb_ids_to_use,
         )
     ]
 
 
-def get_input_model_list(
-    records: List[AnalysisDispatchModel],
+def expand_task_list(
+    input_records: List[AnalysisDispatchModel],
     file_extension: str = "",
     split_files: bool = True,
     distributed_analysis_parameters: Optional[List[dict[str, Any]]] = None,
 ) -> Iterator[AnalysisDispatchModel]:
     """
-    Expand dispatch models with optional file discovery and parameter distribution.
+    Expand list of tasks to dispatch with input file details and parameter expansion.
 
     For each input record, optionally discovers matching S3 files and/or
     expands the model for each provided parameter set, resulting in one or
@@ -377,7 +389,7 @@ def get_input_model_list(
 
     Parameters
     ----------
-    records : List[AnalysisDispatchModel]
+    input_records : List[AnalysisDispatchModel]
         A list of analysis dispatch models representing input data assets.
 
     file_extension : str, default ""
@@ -399,7 +411,7 @@ def get_input_model_list(
         Expanded list of dispatch models. Cardinality is determined by the
         product of input records x file matches (if split) x parameter sets.
     """
-    for record in records:
+    for record in input_records:
         if file_extension:
             file_records = get_asset_file_path_records(
                 record,
@@ -414,6 +426,41 @@ def get_input_model_list(
                     yield record.model_copy(update={"distributed_parameters": params})
             else:
                 yield record
+
+
+def check_task_parameters(
+    input_model_list: Iterator[AnalysisDispatchModel],
+    fixed_analysis_params: Optional[dict[str, Any]] = None,
+    filter_processed: bool = True,
+) -> Iterator[AnalysisDispatchModel]:
+    """
+    Filters out already processed analysis jobs from the input model list.
+
+    Parameters
+    ----------
+    input_model_list : Iterator[AnalysisDispatchModel]
+        An iterator of AnalysisDispatchModel instances to be filtered.
+
+    Returns
+    -------
+    Iterator[AnalysisDispatchModel]
+        An iterator of AnalysisDispatchModel instances that have not been processed yet.
+    """
+    if fixed_analysis_params is None:
+        fixed_analysis_params = {}
+    if os.getenv("CO_PIPELINE_ID"):
+        base_process = get_codeocean_process_metadata(capsule_name="wrapper")
+    else:  # test run, get metadata for current capsule
+        base_process = get_codeocean_process_metadata()
+    for model in input_model_list:
+        process = update_analysis_process(base_process, model, **fixed_analysis_params)
+        if filter_processed and docdb_record_exists(process.code):
+            logger.info(
+                f"Skipping already processed job for assets {model.docdb_record_id}"
+            )
+        else:
+            model.analysis_code = process.code
+            yield model
 
 
 def write_input_model_list(

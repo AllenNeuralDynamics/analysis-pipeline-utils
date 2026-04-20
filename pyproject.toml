@@ -17,13 +17,13 @@ readme = "README.md"
 dynamic = ["version"]
 
 dependencies = [
-    "aind-data-schema>=2.4.0",
-    'aind-data-access-api',
-    'codeocean',
+    "aind-data-schema>=2.4.0,<3.0.0",
+    'aind-data-access-api<2.0.0',
+    'codeocean==0.15.0',
     'fsspec[s3]',
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     'pytest',
     'black',

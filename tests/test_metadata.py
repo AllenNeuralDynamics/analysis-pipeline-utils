@@ -19,6 +19,7 @@ from analysis_pipeline_utils.metadata import (
     extract_parameters,
     get_capsule_version_ignoring_patches,
     get_commits_since_release,
+    get_release_version_for_major,
     get_data_asset_url,
     get_docdb_records,
     get_metadata_for_records,
@@ -361,8 +362,12 @@ def test_get_capsule_version_no_commits_since_release(mock_commits, mock_release
 
 @patch("analysis_pipeline_utils.metadata.get_latest_release")
 @patch("analysis_pipeline_utils.metadata.get_commits_since_release")
-def test_get_capsule_version_only_patch_commits(mock_commits, mock_release):
-    """Commits listed as patches do not invalidate the release version."""
+def test_get_capsule_version_holds_at_release(mock_commits, mock_release, caplog):
+    """Commits after a release do not change the version, but do warn.
+
+    The analysis owner decides what is a substantial new version by cutting a
+    new release (see analysis-pipeline-utils#30).
+    """
     mock_release.return_value = {
         "major_version": 2,
         "minor_version": 1,
@@ -370,13 +375,48 @@ def test_get_capsule_version_only_patch_commits(mock_commits, mock_release):
     }
     mock_commits.return_value = ["aaa", "bbb"]
 
+    assert get_capsule_version_ignoring_patches(Mock()) == "2.1"
+    assert "2 commit(s) since release 2.1" in caplog.text
+
+    # commits listed as patches are not worth warning about
+    caplog.clear()
     assert get_capsule_version_ignoring_patches(Mock(), patch_list="aaa,bbb") == "2.1"
-    assert get_capsule_version_ignoring_patches(Mock(), patch_list="aaa") is None
+    assert caplog.text == ""
 
 
 @patch("analysis_pipeline_utils.metadata.get_latest_release")
-def test_get_capsule_version_degrades_on_error(mock_release):
-    """A failed lookup returns None rather than killing the run."""
-    mock_release.side_effect = RuntimeError("git exploded")
+def test_get_capsule_version_no_release(mock_release):
+    """Without a release there is no version to use; caller falls back."""
+    mock_release.return_value = None
 
     assert get_capsule_version_ignoring_patches(Mock()) is None
+
+
+@patch("analysis_pipeline_utils.metadata.get_latest_release")
+@patch("analysis_pipeline_utils.metadata.get_commits_since_release")
+def test_get_capsule_version_survives_commit_lookup_failure(mock_commits, mock_release):
+    """A failed commit listing must not change the recorded version."""
+    mock_release.return_value = {
+        "major_version": 2,
+        "minor_version": 0,
+        "release_time": 1768017516,
+    }
+    mock_commits.side_effect = RuntimeError("git exploded")
+
+    assert get_capsule_version_ignoring_patches(Mock()) == "2.0"
+
+
+@patch("analysis_pipeline_utils.metadata.get_capsule_releases")
+def test_get_release_version_for_major(mock_releases):
+    """A pinned component's int major version expands to '<major>.<minor>'."""
+    mock_releases.return_value = [
+        {"major_version": 1, "minor_version": 0, "release_time": 1},
+        {"major_version": 2, "minor_version": 0, "release_time": 2},
+        {"major_version": 2, "minor_version": 3, "release_time": 3},
+    ]
+
+    # latest minor wins within a major
+    assert get_release_version_for_major(Mock(), 2) == "2.3"
+    assert get_release_version_for_major(Mock(), 1) == "1.0"
+    # unknown major degrades rather than failing
+    assert get_release_version_for_major(Mock(), 9) == "9"

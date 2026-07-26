@@ -19,6 +19,7 @@ from analysis_pipeline_utils.metadata import (
     get_data_asset_url,
     get_docdb_records,
     get_metadata_for_records,
+    get_capsule_version_ignoring_patches,
 )
 
 
@@ -269,3 +270,49 @@ def test_get_metadata_for_records_none_found(mock_get_record, mock_client_cls):
 
     assert result == []
     assert mock_get_record.call_count == 2
+
+
+@patch("analysis_pipeline_utils.metadata.get_latest_release")
+@patch("analysis_pipeline_utils.metadata.get_commits_since_release")
+def test_get_capsule_version_holds_at_release(mock_commits, mock_release, caplog):
+    """Commits after a release do not change the version, but do warn.
+
+    The analysis owner decides what is a substantial new version by cutting a
+    new release (see analysis-pipeline-utils#30).
+    """
+    mock_release.return_value = {
+        "major_version": 2,
+        "minor_version": 1,
+        "release_time": 1768017516,
+    }
+    mock_commits.return_value = ["aaa", "bbb"]
+
+    assert get_capsule_version_ignoring_patches(Mock()) == "2.1"
+    assert "2 commit(s) since release 2.1" in caplog.text
+
+    # commits listed as patches are not worth warning about
+    caplog.clear()
+    assert get_capsule_version_ignoring_patches(Mock(), patch_list="aaa,bbb") == "2.1"
+    assert caplog.text == ""
+
+
+@patch("analysis_pipeline_utils.metadata.get_latest_release")
+def test_get_capsule_version_no_release(mock_release):
+    """Without a release there is no version to use; caller falls back."""
+    mock_release.return_value = None
+
+    assert get_capsule_version_ignoring_patches(Mock()) is None
+
+
+@patch("analysis_pipeline_utils.metadata.get_latest_release")
+@patch("analysis_pipeline_utils.metadata.get_commits_since_release")
+def test_get_capsule_version_survives_commit_lookup_failure(mock_commits, mock_release):
+    """A failed commit listing must not change the recorded version."""
+    mock_release.return_value = {
+        "major_version": 2,
+        "minor_version": 0,
+        "release_time": 1768017516,
+    }
+    mock_commits.side_effect = RuntimeError("git exploded")
+
+    assert get_capsule_version_ignoring_patches(Mock()) == "2.0"

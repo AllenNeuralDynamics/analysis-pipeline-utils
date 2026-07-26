@@ -23,6 +23,8 @@ def mock_process():
     """Create a mock DataProcess object for testing."""
     process = ps.DataProcess(
         experimenters=["Test User"],
+        # aind-data-schema requires name or notes for an Analysis process
+        name="Test analysis",
         process_type=ps.ProcessName.ANALYSIS,
         stage=ps.ProcessStage.ANALYSIS,
         start_date_time="2023-10-01T00:00:00Z",

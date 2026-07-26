@@ -41,6 +41,7 @@ def mock_computation():
         run_time=3600,
         name="test_capsule",
         state=ComputationState.Running,
+        owner="test_user",
     )
     return computation
 

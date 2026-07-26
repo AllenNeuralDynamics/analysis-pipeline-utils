@@ -239,7 +239,13 @@ def get_codeocean_process_metadata(
 
     capsule = client.capsules.get_capsule(capsule_id)
     process.name = capsule.name
-    if not version:
+    if version:
+        # Code Ocean reports the release of a pinned pipeline component as an
+        # int holding the major version only, which ps.Code rejects. Expand it
+        # to '<major>.<minor>' so it matches the version recorded when the same
+        # release runs unpinned, and the two agree on the hash.
+        version = get_release_version_for_major(capsule, version)
+    else:
         branch = os.getenv("CO_CAPSULE_BRANCH", "HEAD")
         patch_list = os.getenv("PATCH_COMMITS")
         version = get_capsule_version_ignoring_patches(
@@ -352,6 +358,59 @@ def get_capsule_commit_hash(capsule: Capsule, branch="HEAD") -> str:
     return git_commit_hash.split()[0]  # Return the commit hash part
 
 
+def get_capsule_releases(capsule: Capsule) -> List[dict]:
+    """Get all releases for a specific capsule, oldest first.
+
+    Args:
+        capsule: Capsule object
+
+    Returns:
+        List of release dicts, empty if the capsule has no release capsule
+    """
+    if not capsule.release_capsule:
+        return []
+    client = _initialize_codeocean_client()
+    release_capsule = client.capsules.get_capsule(capsule.release_capsule)
+    return release_capsule.versions or []
+
+
+def format_release_version(release: dict) -> str:
+    """Format a Code Ocean release as a '<major>.<minor>' version string.
+
+    Args:
+        release: Release dict from the Code Ocean API
+
+    Returns:
+        str: Version string, e.g. '2.0'
+    """
+    return f"{release['major_version']}.{release['minor_version']}"
+
+
+def get_release_version_for_major(capsule: Capsule, major_version: int) -> str:
+    """Resolve a major version number to a full '<major>.<minor>' string.
+
+    Code Ocean reports the release of a pinned pipeline component as an int
+    holding only the major version. Look up the matching release so the
+    recorded version has the same form as for an unpinned run.
+
+    Args:
+        capsule: Capsule object
+        major_version: Major version reported by the pipeline process
+
+    Returns:
+        str: Version string, falling back to the major version alone
+        if no matching release is found
+    """
+    matching = [
+        release
+        for release in get_capsule_releases(capsule)
+        if release["major_version"] == major_version
+    ]
+    if not matching:
+        return str(major_version)
+    return format_release_version(matching[-1])
+
+
 def get_latest_release(capsule: Capsule) -> Optional[dict]:
     """Get the latest release information for a specific capsule.
     Args:
@@ -359,11 +418,9 @@ def get_latest_release(capsule: Capsule) -> Optional[dict]:
     Returns:
         dict: Latest release information, or None if no releases found
     """
-    if not capsule.release_capsule:
+    versions = get_capsule_releases(capsule)
+    if not versions:
         return None
-    client = _initialize_codeocean_client()
-    release_capsule = client.capsules.get_capsule(capsule.release_capsule)
-    versions = release_capsule.versions
     latest = versions[-1]
     return latest
 

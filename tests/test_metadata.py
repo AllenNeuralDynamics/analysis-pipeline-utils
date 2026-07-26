@@ -19,6 +19,7 @@ from analysis_pipeline_utils.metadata import (
     get_data_asset_url,
     get_docdb_records,
     get_metadata_for_records,
+    get_release_version_for_major,
 )
 
 
@@ -269,3 +270,19 @@ def test_get_metadata_for_records_none_found(mock_get_record, mock_client_cls):
 
     assert result == []
     assert mock_get_record.call_count == 2
+
+
+@patch("analysis_pipeline_utils.metadata.get_capsule_releases")
+def test_get_release_version_for_major(mock_releases):
+    """A pinned component's int major version expands to '<major>.<minor>'."""
+    mock_releases.return_value = [
+        {"major_version": 1, "minor_version": 0, "release_time": 1},
+        {"major_version": 2, "minor_version": 0, "release_time": 2},
+        {"major_version": 2, "minor_version": 3, "release_time": 3},
+    ]
+
+    # latest minor wins within a major
+    assert get_release_version_for_major(Mock(), 2) == "2.3"
+    assert get_release_version_for_major(Mock(), 1) == "1.0"
+    # unknown major degrades rather than failing
+    assert get_release_version_for_major(Mock(), 9) == "9"

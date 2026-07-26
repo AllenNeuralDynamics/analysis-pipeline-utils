@@ -505,6 +505,28 @@ def test_write_input_model_list_invalid_group_size(tmp_path):
         write_input_model_list(iter([model]), tmp_path, tasks_per_job=0)
 
 
+def test_write_input_model_list_no_jobs_writes_placeholder(tmp_path):
+    """A capsule that produces no output at all fails a CO pipeline run,
+    so an empty input list must still leave something in output_directory.
+    """
+
+    write_input_model_list(iter([]), tmp_path)
+
+    assert list(tmp_path.iterdir()) == [tmp_path / "no_new_jobs"]
+
+
+def test_write_input_model_list_zero_max_dispatched_writes_placeholder(tmp_path):
+    """max_number_of_tasks_dispatched=0 also dispatches nothing."""
+
+    model = AnalysisDispatchModel(
+        s3_location=["bucket/a"], asset_name=["a"], docdb_record_id=["doc"]
+    )
+
+    write_input_model_list(iter([model]), tmp_path, max_number_of_tasks_dispatched=0)
+
+    assert list(tmp_path.iterdir()) == [tmp_path / "no_new_jobs"]
+
+
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.docdb_record_exists")
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.update_analysis_process")
 @patch("analysis_pipeline_utils.utils_analysis_dispatch.get_codeocean_process_metadata")

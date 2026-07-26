@@ -1,5 +1,6 @@
 """Utility functions for handling metadata related operations"""
 
+import copy
 import logging
 import os
 import subprocess
@@ -88,6 +89,7 @@ def update_analysis_process(
        combining Code Ocean metadata with analysis job data.
 
     Args:
+        process: Base process record to build on. Left unmodified.
         dispatch_inputs: AnalysisDispatchModel containing analysis metadata including:
             - s3_location (str): S3 URL for input data
         **params: Additional parameters passed to the process
@@ -95,6 +97,13 @@ def update_analysis_process(
     Returns:
         ps.DataProcess: analysis process record with combined metadata
     """
+
+    # Callers fetch one base record per capsule and reuse it for every job, so
+    # the updates below have to land on a copy. Applied in place they would
+    # accumulate: input_data grows job by job and parameters carry over from
+    # the previous job. Both feed processing_prefix(), so the record hash used
+    # to detect already-processed jobs would drift after the first job.
+    process = copy.deepcopy(process)
 
     # add s3_location and parameters from analysis_job_dict
     new_inputs = [DataAsset(url=url) for url in dispatch_inputs.s3_location]

@@ -121,6 +121,41 @@ def test_construct_processing_record():
     )
 
 
+def test_update_analysis_process_leaves_base_record_reusable():
+    """Updates land on a copy so one base record can serve many jobs.
+
+    Regression test: the base record used to be updated in place, so
+    input_data accumulated and parameters carried over from job to job.
+    """
+
+    base = MockModel(
+        code=MockModel(input_data=[], parameters=MockModelWithCopy({})),
+        notes=None,
+    )
+    jobs = [
+        AnalysisDispatchModel(
+            s3_location=[f"s3://test-bucket/{name}"],
+            asset_name=[name],
+            docdb_record_id=[f"id-{name}"],
+            distributed_parameters={name: True},
+        )
+        for name in ("first", "second")
+    ]
+
+    results = [update_analysis_process(base, job) for job in jobs]
+
+    assert base.code.input_data == []
+    assert base.code.parameters.model_dump() == {}
+    assert [[asset.url for asset in result.code.input_data] for result in results] == [
+        ["s3://test-bucket/first"],
+        ["s3://test-bucket/second"],
+    ]
+    assert [result.code.parameters.model_dump() for result in results] == [
+        {"first": True},
+        {"second": True},
+    ]
+
+
 # Test _initialize_codeocean_client function
 @patch.dict(
     os.environ,

@@ -569,3 +569,62 @@ def test_check_task_parameters_no_filter(mock_get_process, mock_construct, mock_
     assert results[0].analysis_code.name == "first"
     assert results[1].analysis_code.name == "second"
     assert mock_exists.call_count == 0
+
+
+class MockParameters:
+    """Minimal stand-in for a pydantic parameters model."""
+
+    def __init__(self, data: dict[str, object] | None = None):
+        """Initialize fields"""
+        self._data = dict(data or {})
+
+    def model_copy(self, update: dict[str, object] | None = None):
+        """Returns a copy with updated data"""
+        return MockParameters({**self._data, **(update or {})})
+
+    def model_dump(self):
+        """Dumps model to dict"""
+        return dict(self._data)
+
+
+@patch("analysis_pipeline_utils.utils_analysis_dispatch.docdb_record_exists")
+@patch("analysis_pipeline_utils.utils_analysis_dispatch.get_codeocean_process_metadata")
+def test_check_task_parameters_builds_independent_records(
+    mock_get_process, mock_exists
+):
+    """Every job gets its own record, built from a single shared base.
+
+    Exercises the real update_analysis_process rather than a mock: the base
+    record used to be updated in place, so input_data accumulated and
+    parameters carried over. That changes the record hash, and only the first
+    job in a batch could be recognized as already processed.
+    """
+
+    mock_get_process.return_value = MockModel(
+        code=MockModel(input_data=[], parameters=MockParameters()),
+        notes=None,
+    )
+    mock_exists.return_value = False
+
+    inputs = [
+        AnalysisDispatchModel(
+            s3_location=[f"bucket/{name}"],
+            asset_name=[name],
+            docdb_record_id=[f"doc-{name}"],
+            distributed_parameters={name: True},
+        )
+        for name in ("a", "b", "c")
+    ]
+
+    results = list(check_task_parameters(iter(inputs), fixed_analysis_params={"x": 1}))
+
+    # the Code Ocean lookup stays hoisted out of the loop
+    mock_get_process.assert_called_once()
+    assert [
+        [asset.url for asset in result.analysis_code.input_data] for result in results
+    ] == [["bucket/a"], ["bucket/b"], ["bucket/c"]]
+    assert [result.analysis_code.parameters.model_dump() for result in results] == [
+        {"x": 1, "a": True},
+        {"x": 1, "b": True},
+        {"x": 1, "c": True},
+    ]

@@ -1,6 +1,7 @@
 """Tests functions for processing metadata."""
 
 import os
+from datetime import datetime
 from types import SimpleNamespace as MockModel
 from unittest.mock import Mock, patch
 
@@ -16,6 +17,8 @@ from analysis_pipeline_utils.metadata import (
     update_analysis_process,
     docdb_record_exists,
     extract_parameters,
+    get_capsule_version_ignoring_patches,
+    get_commits_since_release,
     get_data_asset_url,
     get_docdb_records,
     get_metadata_for_records,
@@ -305,3 +308,76 @@ def test_get_metadata_for_records_none_found(mock_get_record, mock_client_cls):
 
     assert result == []
     assert mock_get_record.call_count == 2
+
+
+# Test release version lookup (see issue #48)
+@patch("analysis_pipeline_utils.metadata._get_git_remote_url")
+@patch("analysis_pipeline_utils.metadata._run_git_command")
+def test_get_commits_since_release_converts_timestamp(mock_git, mock_url):
+    """Unix timestamps from the Code Ocean API are converted for git."""
+    mock_url.return_value = "https://example.com/capsule-1.git"
+    mock_git.return_value = "abc123\ndef456"
+
+    result = get_commits_since_release(Mock(slug="1"), release_time=1768017516)
+
+    assert result == ["abc123", "def456"]
+    log_command = mock_git.call_args_list[-1].args[0]
+    since = next(a for a in log_command if a.startswith("--since="))
+    assert since == f"--since={datetime.fromtimestamp(1768017516).isoformat()}"
+
+
+@patch("analysis_pipeline_utils.metadata._get_git_remote_url")
+@patch("analysis_pipeline_utils.metadata._run_git_command")
+def test_get_commits_since_release_clone_args(mock_git, mock_url):
+    """The clone omits --branch for HEAD and never passes --shallow-since."""
+    mock_url.return_value = "https://example.com/capsule-1.git"
+    mock_git.return_value = ""
+
+    get_commits_since_release(Mock(slug="1"), release_time=1768017516)
+    clone_command = mock_git.call_args_list[0].args[0]
+    # 'HEAD' is not a branch name and would fail with "Remote branch not found"
+    assert "--branch" not in clone_command
+    # --shallow-since aborts the clone when no commits match the cutoff
+    assert "--shallow-since" not in clone_command
+
+    mock_git.reset_mock()
+    get_commits_since_release(Mock(slug="1"), release_time=1768017516, branch="main")
+    clone_command = mock_git.call_args_list[0].args[0]
+    assert clone_command[clone_command.index("--branch") + 1] == "main"
+
+
+@patch("analysis_pipeline_utils.metadata.get_latest_release")
+@patch("analysis_pipeline_utils.metadata.get_commits_since_release")
+def test_get_capsule_version_no_commits_since_release(mock_commits, mock_release):
+    """No commits since release means the release version is used."""
+    mock_release.return_value = {
+        "major_version": 2,
+        "minor_version": 0,
+        "release_time": 1768017516,
+    }
+    mock_commits.return_value = []
+
+    assert get_capsule_version_ignoring_patches(Mock()) == "2.0"
+
+
+@patch("analysis_pipeline_utils.metadata.get_latest_release")
+@patch("analysis_pipeline_utils.metadata.get_commits_since_release")
+def test_get_capsule_version_only_patch_commits(mock_commits, mock_release):
+    """Commits listed as patches do not invalidate the release version."""
+    mock_release.return_value = {
+        "major_version": 2,
+        "minor_version": 1,
+        "release_time": 1768017516,
+    }
+    mock_commits.return_value = ["aaa", "bbb"]
+
+    assert get_capsule_version_ignoring_patches(Mock(), patch_list="aaa,bbb") == "2.1"
+    assert get_capsule_version_ignoring_patches(Mock(), patch_list="aaa") is None
+
+
+@patch("analysis_pipeline_utils.metadata.get_latest_release")
+def test_get_capsule_version_degrades_on_error(mock_release):
+    """A failed lookup returns None rather than killing the run."""
+    mock_release.side_effect = RuntimeError("git exploded")
+
+    assert get_capsule_version_ignoring_patches(Mock()) is None

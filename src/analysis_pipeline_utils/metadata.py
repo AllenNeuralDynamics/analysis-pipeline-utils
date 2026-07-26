@@ -5,7 +5,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import aind_data_schema.core.processing as ps
 from aind_data_access_api.document_db import MetadataDbClient
@@ -377,14 +377,32 @@ def get_latest_release(capsule: Capsule) -> Optional[dict]:
     return latest
 
 
+def _as_git_date(release_time: Union[int, str]) -> str:
+    """Normalize a Code Ocean release time to a date git can parse.
+
+    The Code Ocean API returns release_time as a unix timestamp (int), while
+    callers may also pass an already-formatted string.
+
+    Args:
+        release_time: Unix timestamp or date string
+
+    Returns:
+        str: ISO 8601 timestamp
+    """
+    if isinstance(release_time, str):
+        return release_time
+    return datetime.fromtimestamp(release_time).isoformat()
+
+
 def get_commits_since_release(
-    capsule: Capsule, release_time: str, branch="HEAD"
+    capsule: Capsule, release_time: Union[int, str], branch="HEAD"
 ) -> List[str]:
     """Get commits since the release time from the capsule's git repository.
 
     Args:
         capsule: Capsule object
-        release_time: ISO 8601 timestamp to filter commits since
+        release_time: Unix timestamp or ISO 8601 timestamp to filter commits since
+        branch: Branch name, or 'HEAD' for the remote's default branch
 
     Returns:
         List of commit hashes since the release time
@@ -392,25 +410,21 @@ def get_commits_since_release(
     import tempfile
 
     git_remote_url = _get_git_remote_url(capsule.slug)
+    since = _as_git_date(release_time)
 
     # Create a temporary directory for the bare clone
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Shallow bare clone (only commits, no working tree)
-        # --depth can be adjusted or removed if full history is needed
-        _run_git_command(
-            [
-                "git",
-                "clone",
-                "--bare",
-                "--single-branch",
-                "--branch",
-                branch,
-                "--shallow-since",
-                release_time,
-                git_remote_url,
-                tmpdir,
-            ]
-        )
+        # Bare clone (only commits, no working tree). Note we deliberately do
+        # not pass --shallow-since here: git aborts the clone with "error
+        # processing shallow info" when the cutoff selects no commits, which is
+        # exactly the no-commits-since-release case this function exists to
+        # detect. Filtering with git log below handles that case correctly.
+        clone_command = ["git", "clone", "--bare", "--single-branch"]
+        # 'HEAD' is not a branch name; omitting --branch follows the remote default
+        if branch and branch != "HEAD":
+            clone_command += ["--branch", branch]
+        clone_command += [git_remote_url, tmpdir]
+        _run_git_command(clone_command)
 
         # Run git log in the bare repository
         result = _run_git_command(
@@ -419,7 +433,7 @@ def get_commits_since_release(
                 "--git-dir",
                 tmpdir,
                 "log",
-                f"--since={release_time}",
+                f"--since={since}",
                 "--pretty=format:%H",
             ]
         )
@@ -440,12 +454,22 @@ def get_capsule_version_ignoring_patches(
         if there are non-patch commits since release
     """
     patch_list = patch_list.split(",") if patch_list else []
-    release = get_latest_release(capsule)
-    if release is not None:
-        time = str(release["release_time"])
-        commits = get_commits_since_release(capsule, release_time=time, branch=branch)
-        if not set(commits).difference(set(patch_list)):
-            return f"{release['major_version']}.{release['minor_version']}"
+    try:
+        release = get_latest_release(capsule)
+        if release is not None:
+            commits = get_commits_since_release(
+                capsule, release_time=release["release_time"], branch=branch
+            )
+            if not set(commits).difference(set(patch_list)):
+                return f"{release['major_version']}.{release['minor_version']}"
+    except Exception:
+        # Version lookup is best-effort metadata; callers fall back to the
+        # commit hash. Never fail an analysis run over it.
+        logging.warning(
+            f"Could not resolve release version for capsule {capsule.id}, "
+            "falling back to commit hash.",
+            exc_info=True,
+        )
     return None
 
 

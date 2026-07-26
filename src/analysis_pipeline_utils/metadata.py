@@ -239,15 +239,17 @@ def get_codeocean_process_metadata(
 
     capsule = client.capsules.get_capsule(capsule_id)
     process.name = capsule.name
+    branch = os.getenv("CO_CAPSULE_BRANCH", "HEAD")
     if not version:
-        branch = os.getenv("CO_CAPSULE_BRANCH", "HEAD")
         patch_list = os.getenv("PATCH_COMMITS")
         version = get_capsule_version_ignoring_patches(
             capsule, patch_list=patch_list, branch=branch
         )
-        hash = get_capsule_commit_hash(capsule, branch)
-        version = version or hash
-        process.notes = f"Git commit hash: {hash}"
+    # Recorded outside code so it never affects job-skipping, but stays
+    # available for tracing which commit actually ran.
+    hash = get_capsule_commit_hash(capsule, branch)
+    version = version or hash
+    process.notes = f"Git commit hash: {hash}"
 
     if computation.data_assets:
         input_data = [
@@ -421,23 +423,55 @@ def get_commits_since_release(
 def get_capsule_version_ignoring_patches(
     capsule: Capsule, branch="HEAD", patch_list: Optional[str] = None
 ) -> Optional[str]:
-    """Get the capsule version from the latest release, ignoring patch commits.
+    """Get the capsule version from the latest release.
+
+    The latest release is used whenever the capsule has one, so that commits
+    made after it do not change the recorded version. This lets the analysis
+    owner decide what counts as a substantial new version of the analysis by
+    cutting a new release, rather than having every commit start a new one.
+
+    Commits since the release do not change the version, but are reported as
+    a warning unless they are listed in patch_list.
+
     Args:
         capsule: Capsule object
         branch: Branch name or 'HEAD' to specify which version to retrieve
-        patch_list: Optional comma-separated list of patch commit hashes to ignore
+        patch_list: Optional comma-separated list of patch commit hashes to
+            ignore when deciding whether to warn
+
     Returns:
         str: Version of the capsule based on the latest release, or None
-        if there are non-patch commits since release
+        if the capsule has no releases
     """
-    patch_list = patch_list.split(",") if patch_list else []
     release = get_latest_release(capsule)
-    if release is not None:
+    if release is None:
+        return None
+    version = f"{release['major_version']}.{release['minor_version']}"
+
+    patch_list = patch_list.split(",") if patch_list else []
+    try:
         time = str(release["release_time"])
         commits = get_commits_since_release(capsule, release_time=time, branch=branch)
-        if not set(commits).difference(set(patch_list)):
-            return f"{release['major_version']}.{release['minor_version']}"
-    return None
+    except Exception:
+        # Only the warning below depends on this; the version does not, so a
+        # failure here must never change the recorded version.
+        logging.warning(
+            f"Could not list commits since release {version} "
+            f"for capsule {capsule.name}.",
+            exc_info=True,
+        )
+        return version
+
+    unpatched = set(commits).difference(set(patch_list))
+    if unpatched:
+        logging.warning(
+            f"Capsule {capsule.name} has {len(unpatched)} commit(s) since "
+            f"release {version}, which is still being recorded as the "
+            "analysis version. Cut a new release if those commits "
+            "substantially change results, otherwise jobs already processed "
+            "under this version will not be re-run."
+        )
+    return version
 
 
 def get_capsule_url(capsule: Capsule) -> str:

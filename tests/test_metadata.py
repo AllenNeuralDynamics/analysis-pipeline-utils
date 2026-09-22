@@ -174,7 +174,7 @@ def test_get_codeocean_process_metadata_formats_release_version(mock_client):
         ],
         data_assets=[],
     )
-    capsule = Mock(
+    capsule = MockModel(
         name="test_capsule",
         slug="test-capsule",
         cloned_from_url=None,

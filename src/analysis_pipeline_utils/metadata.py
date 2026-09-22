@@ -230,7 +230,9 @@ def get_codeocean_process_metadata(
         )
         if proc:
             parameters = extract_parameters(proc)
-            version = proc.version
+            # PipelineProcess only provides MAJOR; Code.version requires MAJOR.MINOR.
+            # See https://github.com/codeocean/codeocean-sdk-python/issues/74.
+            version = f"{proc.version}.0" if proc.version is not None else None
             capsule_id = proc.capsule_id
         if extra_params_from_process_name:
             extra_proc = _get_matching_computation_subprocess(

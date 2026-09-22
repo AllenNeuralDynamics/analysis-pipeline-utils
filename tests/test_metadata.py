@@ -14,6 +14,7 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
 from analysis_pipeline_utils.metadata import (
     _initialize_codeocean_client,
     _run_git_command,
+    get_codeocean_process_metadata,
     update_analysis_process,
     docdb_record_exists,
     extract_parameters,
@@ -155,6 +156,38 @@ def test_update_analysis_process_leaves_base_record_reusable():
         {"first": True},
         {"second": True},
     ]
+
+
+@patch("analysis_pipeline_utils.metadata._initialize_codeocean_client")
+def test_get_codeocean_process_metadata_formats_release_version(mock_client):
+    """Formats the major-only release version as a Code.version string."""
+    computation = Mock(
+        created=1622764800,
+        run_time=3600,
+        processes=[
+            Mock(
+                capsule_id="capsule-id",
+                name="test_capsule",
+                parameters=[],
+                version=2,
+            )
+        ],
+        data_assets=[],
+    )
+    capsule = Mock(
+        name="test_capsule",
+        slug="test-capsule",
+        cloned_from_url=None,
+        original_capsule=None,
+    )
+    mock_client.return_value.computations.get_computation.return_value = computation
+    mock_client.return_value.capsules.get_capsule.return_value = capsule
+
+    result = get_codeocean_process_metadata(
+        computation_id="computation-id", capsule_id="capsule-id"
+    )
+
+    assert result.code.version == "2.0"
 
 
 # Test _initialize_codeocean_client function

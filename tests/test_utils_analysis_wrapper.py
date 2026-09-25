@@ -197,3 +197,37 @@ def test_run_analysis_jobs_skips_processed_job(tmp_path):
     mock_write.assert_not_called()
     marker_name = f"/results/skip_{job_path.stem}"
     mock_mknod.assert_called_once_with(marker_name)
+
+
+def test_run_analysis_jobs_no_input_writes_placeholder(tmp_path):
+    """No input job models still leaves a marker in /results.
+
+    A capsule run in a Code Ocean pipeline that produces no output at all is
+    treated as an error, and this wrapper may legitimately have received no
+    jobs if a dispatcher-side skip routed them elsewhere.
+    """
+
+    fake_cli_args = MockModel(
+        dry_run=1,
+        input_directory=tmp_path,
+        model_dump=lambda exclude_unset=True: {},
+    )
+
+    with (
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.make_cli_model_class",
+            return_value=MagicMock(return_value=fake_cli_args),
+        ),
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.get_codeocean_process_metadata"  # noqa: E501
+        ) as mock_get_process,
+        patch("analysis_pipeline_utils.utils_analysis_wrapper.os.mknod") as mock_mknod,
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.write_results_and_metadata"
+        ) as mock_write,
+    ):
+        run_analysis_jobs(ExampleInput, ExampleOutput, MagicMock())
+
+    mock_get_process.assert_not_called()
+    mock_write.assert_not_called()
+    mock_mknod.assert_called_once_with("/results/no_input_jobs")

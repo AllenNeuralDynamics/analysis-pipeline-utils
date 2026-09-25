@@ -488,12 +488,16 @@ def write_input_model_list(
     -------
     None
         This function does not return any value.
-        It writes JSON files to disk for each input model.
+        It writes JSON files to disk for each input model, or a single
+        placeholder file if there were none. A capsule run in a Code Ocean
+        pipeline that produces no output at all is treated as an error, so
+        this happens even when every job has already been processed.
     """
 
     if tasks_per_job < 1:
         raise ValueError("tasks_per_job must be at least 1")
 
+    wrote_any = False
     for task_id, task_model in enumerate(input_model_list):
         if task_id == max_number_of_tasks_dispatched:
             break
@@ -503,3 +507,9 @@ def write_input_model_list(
 
         with open(job_folder / f"{uuid.uuid4()}.json", "w") as f:
             f.write(task_model.model_dump_json(indent=4))
+        wrote_any = True
+
+    if not wrote_any:
+        logger.info("No new jobs to dispatch.")
+        output_directory.mkdir(parents=True, exist_ok=True)
+        (output_directory / "no_new_jobs").touch()

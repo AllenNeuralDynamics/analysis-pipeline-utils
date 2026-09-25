@@ -93,6 +93,12 @@ def run_analysis_jobs(
 
     Returns
     -------
+    None
+        Writes results and metadata for each job to /results. If there are
+        no input job models, writes a placeholder instead: a capsule run in
+        a Code Ocean pipeline that produces no output at all is treated as
+        an error, and every job here may legitimately have already been
+        dispatched to a different wrapper computation.
     """
     cli_cls = make_cli_model_class(analysis_input_model)
     cli_args = cli_cls()
@@ -102,6 +108,9 @@ def run_analysis_jobs(
         logger.info(f"App panel CLI parameter overrides: {cli_params}")
     input_model_paths = tuple(cli_args.input_directory.glob("job_dict/*"))
     logger.info(f"Found {len(input_model_paths)} input job models to run analysis on.")
+    if not input_model_paths:
+        os.mknod("/results/no_input_jobs")
+        return
     dry_run = bool(cli_args.dry_run)
 
     base_process = get_codeocean_process_metadata()

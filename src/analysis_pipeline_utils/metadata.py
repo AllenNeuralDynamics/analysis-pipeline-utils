@@ -17,6 +17,11 @@ from codeocean.computation import Computation, PipelineProcess
 from codeocean.capsule import Capsule
 
 from .analysis_dispatch_model import AnalysisDispatchModel
+from .git import (
+    _initialize_codeocean_client,
+    get_capsule_commit_hash,
+    get_capsule_version_ignoring_patches,
+)
 from .result_files import (
     copy_results_to_s3,
     create_results_metadata,
@@ -166,24 +171,6 @@ def analysis_pipeline_processing_metadata(
     return processing.model_validate(processing)
 
 
-def _initialize_codeocean_client() -> CodeOcean:
-    """Initialize Code Ocean client using environment variables.
-
-    Returns:
-        CodeOcean: Initialized Code Ocean client
-
-    Raises:
-        ValueError: If required environment variables are missing
-    """
-    domain = os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
-    token = os.getenv("CODEOCEAN_API_TOKEN")
-
-    if not token:
-        raise ValueError("CODEOCEAN_API_TOKEN environment variable is required")
-
-    return CodeOcean(domain=f"https://{domain}", token=token)
-
-
 def get_codeocean_process_metadata(
     computation_id: Optional[str] = None,
     capsule_id: Optional[str] = None,
@@ -304,175 +291,6 @@ def _get_matching_computation_subprocess(
             f"Multiple processes found for {capsule_id=} or {capsule_name=}"
         )
     return matched_process[0]
-
-
-def _run_git_command(command: List[str]) -> str:
-    """Run a git command safely and return its output.
-
-    Args:
-        command: List of command arguments
-
-    Returns:
-        str: Command output or default value if command fails
-    """
-    result = subprocess.run(command, capture_output=True, text=True, check=True)
-    return result.stdout.strip()
-
-
-def _get_git_remote_url(capsule_slug: str) -> str:
-    """Get the git remote URL for the specified capsule.
-
-    Args:
-        capsule_slug: Slug of the capsule
-
-    Returns:
-        str: Remote URL of the git repository
-    """
-    # these variables are set in pipelines only
-    credentials = os.getenv("GIT_ACCESS_TOKEN")
-    domain = os.getenv("GIT_HOST")
-    if not all([credentials, domain]):
-        try:
-            username = os.getenv("CODEOCEAN_EMAIL")
-            username = username.replace("@", "%40")
-            token = os.getenv("CODEOCEAN_API_TOKEN")
-            credentials = f"{username}:{token}"
-            domain = os.getenv("CODEOCEAN_DOMAIN")
-        except Exception:
-            raise ValueError(
-                "GIT_ACCESS_TOKEN or CODEOCEAN_API_TOKEN "
-                "environment variable is required"
-            )
-    return f"https://{credentials}@{domain}/capsule-{capsule_slug}.git"
-
-
-def get_capsule_commit_hash(capsule: Capsule, branch="HEAD") -> str:
-    """Get the git version for a specific capsule from the remote repository.
-
-    Args:
-        capsule: Capsule object
-        branch: Branch name or 'HEAD' to specify which version to retrieve
-
-    Returns:
-        str: Commit hash of the HEAD of the capsule's git repository
-    """
-    git_remote_url = _get_git_remote_url(capsule.slug)
-    git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, branch])
-    if not git_commit_hash:
-        raise ValueError(f"Could not retrieve git commit hash for capsule {capsule}")
-    return git_commit_hash.split()[0]  # Return the commit hash part
-
-
-def get_latest_release(capsule: Capsule) -> Optional[dict]:
-    """Get the latest release information for a specific capsule.
-    Args:
-        capsule: Capsule object
-    Returns:
-        dict: Latest release information, or None if no releases found
-    """
-    if not capsule.release_capsule:
-        return None
-    client = _initialize_codeocean_client()
-    release_capsule = client.capsules.get_capsule(capsule.release_capsule)
-    versions = release_capsule.versions
-    latest = versions[-1]
-    return latest
-
-
-def _as_git_date(release_time: Union[int, str]) -> str:
-    """Normalize a Code Ocean release time to a date git can parse.
-
-    The Code Ocean API returns release_time as a unix timestamp (int), while
-    callers may also pass an already-formatted string.
-
-    Args:
-        release_time: Unix timestamp or date string
-
-    Returns:
-        str: ISO 8601 timestamp
-    """
-    if isinstance(release_time, str):
-        return release_time
-    return datetime.fromtimestamp(release_time).isoformat()
-
-
-def get_commits_since_release(
-    capsule: Capsule, release_time: Union[int, str], branch="HEAD"
-) -> List[str]:
-    """Get commits since the release time from the capsule's git repository.
-
-    Args:
-        capsule: Capsule object
-        release_time: Unix timestamp or ISO 8601 timestamp to filter commits since
-        branch: Branch name, or 'HEAD' for the remote's default branch
-
-    Returns:
-        List of commit hashes since the release time
-    """
-    import tempfile
-
-    git_remote_url = _get_git_remote_url(capsule.slug)
-    since = _as_git_date(release_time)
-
-    # Create a temporary directory for the bare clone
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Bare clone (only commits, no working tree). Note we deliberately do
-        # not pass --shallow-since here: git aborts the clone with "error
-        # processing shallow info" when the cutoff selects no commits, which is
-        # exactly the no-commits-since-release case this function exists to
-        # detect. Filtering with git log below handles that case correctly.
-        clone_command = ["git", "clone", "--bare", "--single-branch"]
-        # 'HEAD' is not a branch name; omitting --branch follows the remote default
-        if branch and branch != "HEAD":
-            clone_command += ["--branch", branch]
-        clone_command += [git_remote_url, tmpdir]
-        _run_git_command(clone_command)
-
-        # Run git log in the bare repository
-        result = _run_git_command(
-            [
-                "git",
-                "--git-dir",
-                tmpdir,
-                "log",
-                f"--since={since}",
-                "--pretty=format:%H",
-            ]
-        )
-
-        return result.splitlines()
-
-
-def get_capsule_version_ignoring_patches(
-    capsule: Capsule, branch="HEAD", patch_list: Optional[str] = None
-) -> Optional[str]:
-    """Get the capsule version from the latest release, ignoring patch commits.
-    Args:
-        capsule: Capsule object
-        branch: Branch name or 'HEAD' to specify which version to retrieve
-        patch_list: Optional comma-separated list of patch commit hashes to ignore
-    Returns:
-        str: Version of the capsule based on the latest release, or None
-        if there are non-patch commits since release
-    """
-    patch_list = patch_list.split(",") if patch_list else []
-    try:
-        release = get_latest_release(capsule)
-        if release is not None:
-            commits = get_commits_since_release(
-                capsule, release_time=release["release_time"], branch=branch
-            )
-            if not set(commits).difference(set(patch_list)):
-                return f"{release['major_version']}.{release['minor_version']}"
-    except Exception:
-        # Version lookup is best-effort metadata; callers fall back to the
-        # commit hash. Never fail an analysis run over it.
-        logging.warning(
-            f"Could not resolve release version for capsule {capsule.id}, "
-            "falling back to commit hash.",
-            exc_info=True,
-        )
-    return None
 
 
 def get_capsule_url(capsule: Capsule) -> str:

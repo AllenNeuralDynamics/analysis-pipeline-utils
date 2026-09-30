@@ -19,8 +19,9 @@ dynamic = ["version"]
 dependencies = [
     "aind-data-schema>=2.4.0,<3.0.0",
     'aind-data-access-api>=1.10.0,<2',
-    'codeocean==0.15.0',
+    "codeocean==0.16.0",
     'fsspec[s3]',
+    'pydantic-settings',
 ]
 
 [dependency-groups]

@@ -5,18 +5,19 @@ Functions for analysis dispatcher
 import csv
 import json
 import logging
-import os
 import uuid
 from pathlib import Path
 from requests.exceptions import HTTPError
 from typing import Any, Iterator, List, Optional, Union
 
+from pydantic import Field
 from s3fs import S3FileSystem
 
 from aind_data_access_api.document_db import MetadataDbClient
 from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
+from analysis_pipeline_utils.settings import PipelineEnvSettings, get_settings
 from analysis_pipeline_utils.metadata import (
     update_analysis_process,
     docdb_record_exists,
@@ -26,10 +27,78 @@ from analysis_pipeline_utils.metadata import (
 logger = logging.getLogger(__name__)
 
 
+class AnalysisDispatchSettings(PipelineEnvSettings, cli_parse_args=True):
+    """
+    Pydantic settings model for the dispatch job's input arguments.
+
+    Inherits the shared DocDB/Code Ocean env vars (docdb_host,
+    codeocean_api_token, etc.) from `PipelineEnvSettings`, and adds the
+    CLI-specific arguments for the dispatch job below.
+    """
+
+    docdb_query: str = Field(
+        default="",
+        description="JSON string of query for getting data assets or path to query json file",
+    )
+    use_data_asset_csv: bool = Field(
+        default=False,
+        description="Use CSV list of data asset IDs instead of a query",
+    )
+    file_extension: Optional[str] = Field(
+        default=None,
+        description="Specify file extension filter",
+    )
+    split_files: bool = Field(
+        default=True,
+        description="Whether to split files into separate models",
+    )
+    tasks_per_job: int = Field(
+        default=1,
+        description="Number of tasks per job",
+    )
+    max_number_of_tasks_dispatched: int = Field(
+        default=1000,
+        description="Maximum number of tasks to be dispatched",
+    )
+    group_by: Optional[List[str]] = Field(
+        default=None,
+        description="DocDB record field(s) to group records by",
+    )
+    filter_latest: Optional[str] = Field(
+        default=None,
+        description="DocDB field to filter latest records, keeping only the most recent per group",
+    )
+    filter_by: Optional[List[str]] = Field(
+        default=None,
+        description="Field(s) to group by when filtering latest records",
+    )
+    unwind_list_fields: Optional[List[str]] = Field(
+        default=None,
+        description="Field(s) to unwind (flatten) before grouping",
+    )
+    drop_null_groups: bool = Field(
+        default=True,
+        description="If True, filter out records where grouping fields are None",
+    )
+    docdb_version: str = Field(
+        default="v1",
+        description="Version of aind-data-schema to query in DocDB, v1 or v2",
+    )
+    input_directory: Path = Field(
+        default=Path("/data/input_files"),
+        description="Input directory",
+    )
+    output_directory: Path = Field(
+        default=Path("/results"),
+        description="Output directory",
+    )
+
+
 def _docdb_api_client():
     """Returns the docdb api client"""
-    version = os.getenv("DOCDB_VERSION", "v1")
-    return MetadataDbClient(host=os.getenv("DOCDB_HOST"), version=version)
+    docdb_host = get_settings(PipelineEnvSettings).docdb_host
+    docdb_version = get_settings(AnalysisDispatchSettings).docdb_version
+    return MetadataDbClient(host=docdb_host, version=docdb_version)
 
 
 fs = S3FileSystem(use_listings_cache=False)
@@ -448,7 +517,7 @@ def check_task_parameters(
     """
     if fixed_analysis_params is None:
         fixed_analysis_params = {}
-    if os.getenv("CO_PIPELINE_ID"):
+    if get_settings(PipelineEnvSettings).co_pipeline_id:
         base_process = get_codeocean_process_metadata(capsule_name="wrapper")
     else:  # test run, get metadata for current capsule
         base_process = get_codeocean_process_metadata()

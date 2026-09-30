@@ -2,8 +2,6 @@
 
 import copy
 import logging
-import os
-import subprocess
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
@@ -17,6 +15,8 @@ from codeocean.computation import Computation, PipelineProcess
 from codeocean.capsule import Capsule
 
 from .analysis_dispatch_model import AnalysisDispatchModel
+from .settings import PipelineEnvSettings, get_settings
+
 from .result_files import (
     copy_results_to_s3,
     create_results_metadata,
@@ -45,7 +45,7 @@ def get_metadata_for_records(
     """
     record_ids = analysis_dispatch_input.docdb_record_id
     metadata_records = []
-    docdb_client = MetadataDbClient(host=os.getenv("DOCDB_HOST"))
+    docdb_client = MetadataDbClient(host=get_settings(PipelineEnvSettings).docdb_host)
 
     for record_id in record_ids:
         record = get_record_from_docdb(docdb_client, record_id)
@@ -156,7 +156,7 @@ def analysis_pipeline_processing_metadata(
     processing = ps.Processing.create_with_sequential_process_graph(
         data_processes=[base_process]
     )
-    pipeline_id = os.getenv("CO_PIPELINE_ID")
+    pipeline_id = get_settings(PipelineEnvSettings).co_pipeline_id
     if pipeline_id:
         pipeline_process = get_codeocean_process_metadata(
             capsule_id=pipeline_id, extra_params_from_process_name="dispatch"
@@ -196,14 +196,15 @@ def get_codeocean_process_metadata(
 
     """
     # Initialize the Code Ocean client and get computation ID
+    settings = get_settings(PipelineEnvSettings)
     client = _initialize_codeocean_client()
-    computation_id = computation_id or os.getenv("CO_COMPUTATION_ID")
+    computation_id = computation_id or settings.co_computation_id
     computation = client.computations.get_computation(computation_id)
 
     # Extract relevant metadata from the computation
     process = ps.DataProcess.model_construct(
         # computation.name likely only set for named runs
-        experimenters=[os.getenv("CODEOCEAN_EMAIL", "unknown")],
+        experimenters=[settings.codeocean_email or "unknown"],
         process_type=ps.ProcessName.ANALYSIS,
         stage=ps.ProcessStage.ANALYSIS,
         start_date_time=datetime.fromtimestamp(computation.created),
@@ -213,7 +214,7 @@ def get_codeocean_process_metadata(
     )
 
     if capsule_id is None and capsule_name is None:
-        capsule_id = os.getenv("CO_CAPSULE_ID")
+        capsule_id = settings.co_capsule_id
         if capsule_id is None:
             raise ValueError(
                 "capsule_id or environment variable CO_CAPSULE_ID must be provided"
@@ -251,8 +252,8 @@ def get_codeocean_process_metadata(
     capsule = client.capsules.get_capsule(capsule_id)
     process.name = capsule.name
     if not version:
-        branch = os.getenv("CO_CAPSULE_BRANCH", "HEAD")
-        patch_list = os.getenv("PATCH_COMMITS")
+        branch = settings.co_capsule_branch
+        patch_list = settings.patch_commits
         version = get_capsule_version_ignoring_patches(
             capsule, patch_list=patch_list, branch=branch
         )
@@ -487,7 +488,7 @@ def get_capsule_url(capsule: Capsule) -> str:
     if capsule.cloned_from_url and capsule.original_capsule:
         return capsule.cloned_from_url
 
-    domain = os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
+    domain = get_settings(PipelineEnvSettings).codeocean_domain
     return f"https://{domain}/capsule/{capsule.slug}"
 
 
@@ -625,12 +626,13 @@ def get_docdb_client(host=None, database=None, collection=None) -> MetadataDbCli
     """
     Get a client for the document database
     """
+    settings = get_settings(PipelineEnvSettings)
     if host is None:
-        host = os.getenv("DOCDB_HOST")
+        host = settings.docdb_host
     if database is None:
-        database = os.getenv("DOCDB_DATABASE")
+        database = settings.docdb_database
     if collection is None:
-        collection = os.getenv("DOCDB_COLLECTION")
+        collection = settings.docdb_collection
     client = MetadataDbClient(
         host=host,
         database=database,
@@ -654,7 +656,7 @@ def write_results_and_metadata(
 
     """
     if s3_bucket is None:
-        s3_bucket = os.getenv("ANALYSIS_BUCKET")
+        s3_bucket = get_settings(PipelineEnvSettings).analysis_bucket
     metadata, docdb_id = create_results_metadata(processing, s3_bucket)
     with open("/results/metadata.nd.json", "w") as f:
         f.write(metadata.model_dump_json(indent=2))

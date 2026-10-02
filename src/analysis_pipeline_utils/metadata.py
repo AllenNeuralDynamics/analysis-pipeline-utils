@@ -262,7 +262,7 @@ def get_codeocean_process_metadata(
 
     if computation.data_assets:
         input_data = [
-            DataAsset(url=get_data_asset_url(client, asset.id))
+            get_data_asset_metadata(client, asset.id)
             for asset in computation.data_assets
         ]
     else:
@@ -491,7 +491,7 @@ def get_capsule_url(capsule: Capsule) -> str:
     return f"https://{domain}/capsule/{capsule.slug}"
 
 
-def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
+def get_data_asset_metadata(client: CodeOcean, data_asset_id: str) -> str:
     """Get the S3 URL for a data asset.
 
     Args:
@@ -505,10 +505,19 @@ def get_data_asset_url(client: CodeOcean, data_asset_id: str) -> str:
         ValueError: If data asset origin is not AWS
     """
     data_asset = client.data_assets.get_data_asset(data_asset_id)
+    if data_asset.type == "combined":
+        return CombinedData(
+            assets=[
+                get_data_asset_metadata(client, asset.id)
+                for asset in data_asset.contained_data_assets
+            ],
+            name=data_asset.name,
+            database_identifier={"Code Ocean": [data_asset.id]},
+        )
     if data_asset.source_bucket and data_asset.source_bucket.origin == "aws":
         bucket = data_asset.source_bucket.bucket
         prefix = data_asset.source_bucket.prefix or ""
-        return f"s3://{bucket}/{prefix}"
+        return DataAsset(url=f"s3://{bucket}/{prefix}", name=prefix)
     else:
         raise ValueError(
             f"Data asset source bucket {data_asset.source_bucket} not supported."

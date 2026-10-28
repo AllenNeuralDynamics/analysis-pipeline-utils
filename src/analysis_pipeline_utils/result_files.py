@@ -5,11 +5,12 @@ from analysis
 
 import hashlib
 import warnings
-from typing import Dict
+from typing import Dict, Optional
 
 import aind_data_schema.core.processing as ps
 import fsspec
 from aind_data_schema.core.metadata import Metadata
+from aind_data_schema.core.quality_control import QualityControl
 
 
 def list_results_files(metadata: Dict | Metadata) -> list[str]:
@@ -46,7 +47,9 @@ def copy_results_to_s3(metadata: Metadata, results_path="/results"):
 
 
 def create_results_metadata(
-    processing: ps.Processing, s3_bucket: str
+    processing: ps.Processing,
+    s3_bucket: str,
+    quality_control: Optional[QualityControl] = None,
 ) -> tuple[Metadata, str]:
     """
     Create metadata for the results of a processing job.
@@ -54,6 +57,7 @@ def create_results_metadata(
     Args:
         process: The processing job to create metadata for.
         s3_bucket: The S3 bucket to store results in.
+        quality_control: Optional quality control record for the results.
 
     Returns:
         Metadata: The created metadata object.
@@ -71,6 +75,7 @@ def create_results_metadata(
             # TODO: name matching prefix or something else?
             name=s3_prefix,
             location=s3_url,
+            quality_control=quality_control,
         )
     return md, s3_prefix
 

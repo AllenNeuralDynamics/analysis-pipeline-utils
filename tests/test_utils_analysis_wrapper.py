@@ -85,6 +85,8 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
     processing = MockModel(data_processes=[process])
 
     mock_run = MagicMock(return_value={"status": "ok"})
+    records = {"name": "asset1"}
+    quality_control = MagicMock()
 
     with (
         patch(
@@ -108,6 +110,14 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
             return_value=False,
         ) as mock_exists,
         patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.get_metadata_for_records",  # noqa: E501
+            return_value=[records],
+        ) as mock_get_records,
+        patch(
+            "analysis_pipeline_utils.utils_analysis_wrapper.output_parameters_to_quality_control",  # noqa: E501
+            return_value=quality_control,
+        ) as mock_qc,
+        patch(
             "analysis_pipeline_utils.utils_analysis_wrapper.write_results_and_metadata"
         ) as mock_write,
     ):
@@ -125,7 +135,11 @@ def test_run_analysis_jobs_executes_new_job(tmp_path):
     assert asserted_params.value_threshold == 5.0
 
     mock_exists.assert_called_once()
-    mock_write.assert_called_once_with(processing, dry_run=False)
+    mock_get_records.assert_called_once_with(asserted_dispatch)
+    mock_qc.assert_called_once_with(process.output_parameters, [records])
+    mock_write.assert_called_once_with(
+        processing, dry_run=False, quality_control=quality_control
+    )
     assert isinstance(process.output_parameters, ExampleOutput)
     assert process.output_parameters.status == "ok"
 

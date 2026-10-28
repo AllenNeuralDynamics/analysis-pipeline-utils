@@ -10,8 +10,17 @@ from typing import Any, Dict, List, Optional, Union
 import aind_data_schema.core.processing as ps
 from aind_data_access_api.document_db import MetadataDbClient
 from aind_data_access_api.utils import get_record_from_docdb
+from aind_data_schema.base import GenericModel
 from aind_data_schema.components.identifiers import CombinedData, DataAsset
 from aind_data_schema.core.metadata import Metadata
+from aind_data_schema.core.quality_control import (
+    QCMetric,
+    QCStatus,
+    QualityControl,
+    Stage,
+    Status,
+)
+from aind_data_schema_models.modalities import Modality
 from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
 from codeocean.capsule import Capsule
@@ -164,6 +173,92 @@ def analysis_pipeline_processing_metadata(
         processing.data_processes[0].pipeline_name = pipeline_process.name
         processing.pipelines = [pipeline_process.code]
     return processing.model_validate(processing)
+
+
+def _get_modality_from_records(records: List[Dict]) -> Modality.ONE_OF:
+    """
+    Get the modality of the input data assets from their metadata records
+
+    Parameters
+    ----------
+    records : List[Dict]
+        Metadata records of the input data assets
+
+    Returns
+    -------
+    Modality.ONE_OF
+        The first modality listed in the records' data descriptions
+
+    Raises
+    ------
+    ValueError
+        If none of the records list a modality
+    """
+    for record in records:
+        data_description = record.get("data_description") or {}
+        modalities = data_description.get("modalities") or []
+        if modalities:
+            return Modality.from_abbreviation(modalities[0]["abbreviation"])
+    raise ValueError("No modality found in the input data asset records")
+
+
+def output_parameters_to_quality_control(
+    output_parameters: GenericModel,
+    input_records: List[Dict],
+    evaluator: str = "Automated",
+    tags: Optional[Dict[str, str]] = None,
+) -> QualityControl:
+    """
+    Map analysis output parameters to a QualityControl record,
+    with one metric per output parameter.
+
+    All metrics are currently given a passing status.
+
+    Parameters
+    ----------
+    output_parameters : GenericModel
+        Output parameters model returned by the analysis
+    input_records : List[Dict]
+        Metadata records of the data assets the analysis was run on.
+        The metric modality is the first modality listed in the records.
+    evaluator : str, optional
+        Name recorded as the evaluator of each metric's status,
+        by default "Automated"
+    tags : Optional[Dict[str, str]], optional
+        Tags applied to every metric, by default None
+
+    Returns
+    -------
+    QualityControl
+        Quality control record with a metric per output parameter
+
+    Raises
+    ------
+    ValueError
+        If none of the input records list a modality
+    """
+    modality = _get_modality_from_records(input_records)
+    timestamp = datetime.now().astimezone()
+    fields = type(output_parameters).model_fields
+
+    metrics = [
+        QCMetric(
+            name=name,
+            modality=modality,
+            stage=Stage.ANALYSIS,
+            value=value,
+            status_history=[
+                QCStatus(evaluator=evaluator, status=Status.PASS, timestamp=timestamp)
+            ],
+            description=fields[name].description if name in fields else None,
+            tags=tags or {},
+        )
+        for name, value in output_parameters.model_dump(mode="json").items()
+    ]
+    return QualityControl(
+        metrics=metrics,
+        default_grouping=list(tags) if tags else [],
+    )
 
 
 def _initialize_codeocean_client() -> CodeOcean:
@@ -643,6 +738,7 @@ def write_results_and_metadata(
     processing: ps.Processing,
     s3_bucket: Optional[str] = None,
     dry_run: bool = False,
+    quality_control: Optional[QualityControl] = None,
 ) -> None:
     """
     Writes output and copies to s3.
@@ -651,11 +747,14 @@ def write_results_and_metadata(
     Args:
         processing: Processing record
         s3_bucket: Bucket to copy results to
+        quality_control: Quality control record to include in the metadata
 
     """
     if s3_bucket is None:
         s3_bucket = os.getenv("ANALYSIS_BUCKET")
-    metadata, docdb_id = create_results_metadata(processing, s3_bucket)
+    metadata, docdb_id = create_results_metadata(
+        processing, s3_bucket, quality_control=quality_control
+    )
     with open("/results/metadata.nd.json", "w") as f:
         f.write(metadata.model_dump_json(indent=2))
     if not dry_run:

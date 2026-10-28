@@ -6,6 +6,7 @@ from types import SimpleNamespace as MockModel
 from unittest.mock import Mock, patch
 
 import pytest
+from aind_data_schema.components.identifiers import CombinedData, DataAsset
 from codeocean.computation import Computation, ComputationState, Param
 
 from analysis_pipeline_utils.analysis_dispatch_model import (
@@ -20,7 +21,7 @@ from analysis_pipeline_utils.metadata import (
     extract_parameters,
     get_capsule_version_ignoring_patches,
     get_commits_since_release,
-    get_data_asset_url,
+    get_data_asset_metadata,
     get_docdb_records,
     get_metadata_for_records,
 )
@@ -54,7 +55,8 @@ def mock_code_ocean_client():
     """
     client = Mock()
     client.data_assets.get_data_asset.return_value = Mock(
-        source_bucket=Mock(origin="aws", bucket="test-bucket", prefix="test-prefix")
+        type="dataset",
+        source_bucket=Mock(origin="aws", bucket="test-bucket", prefix="test-prefix"),
     )
     return client
 
@@ -222,20 +224,47 @@ def test_run_git_command_success(mock_run):
     mock_run.assert_called_once()
 
 
-# Test get_data_asset_url function
-def test_get_data_asset_url_aws(mock_code_ocean_client):
-    """Tests getting data asset url from aws"""
-    result = get_data_asset_url(mock_code_ocean_client, "test-asset-id")
-    assert result == "s3://test-bucket/test-prefix"
+# Test get_data_asset_metadata function
+def test_get_data_asset_metadata_aws(mock_code_ocean_client):
+    """Tests getting data asset metadata from aws"""
+    result = get_data_asset_metadata(mock_code_ocean_client, "test-asset-id")
+    assert isinstance(result, DataAsset)
+    assert result.url == "s3://test-bucket/test-prefix"
+    assert result.name == "test-prefix"
 
 
-def test_get_data_asset_url_non_aws(mock_code_ocean_client):
-    """Tests getting data asset url not from aws"""
+def test_get_data_asset_metadata_non_aws(mock_code_ocean_client):
+    """Tests getting data asset metadata not from aws"""
     mock_code_ocean_client.data_assets.get_data_asset.return_value = Mock(
-        source_bucket=Mock(origin="other")
+        type="dataset", source_bucket=Mock(origin="other")
     )
     with pytest.raises(ValueError):
-        get_data_asset_url(mock_code_ocean_client, "test-asset-id")
+        get_data_asset_metadata(mock_code_ocean_client, "test-asset-id")
+
+
+def test_get_data_asset_metadata_combined(mock_code_ocean_client):
+    """Combined assets are returned as CombinedData of their contents"""
+    combined = Mock(
+        type="combined",
+        id="combined-id",
+        contained_data_assets=[Mock(id="a"), Mock(id="b")],
+    )
+    combined.name = "combined-asset"
+    child = Mock(
+        type="dataset",
+        source_bucket=Mock(origin="aws", bucket="bucket", prefix="child"),
+    )
+    mock_code_ocean_client.data_assets.get_data_asset.side_effect = [
+        combined,
+        child,
+        child,
+    ]
+
+    result = get_data_asset_metadata(mock_code_ocean_client, "combined-id")
+
+    assert isinstance(result, CombinedData)
+    assert result.name == "combined-asset"
+    assert [asset.url for asset in result.assets] == ["s3://bucket/child"] * 2
 
 
 # Test DocDB related functions

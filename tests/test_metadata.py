@@ -6,11 +6,8 @@ from types import SimpleNamespace as MockModel
 from unittest.mock import Mock, patch
 
 import pytest
-from aind_data_schema.base import GenericModel
-from aind_data_schema.core.quality_control import Stage, Status
 from aind_data_schema_models.modalities import Modality
 from codeocean.computation import Computation, ComputationState, Param
-from pydantic import Field
 
 from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
@@ -27,7 +24,7 @@ from analysis_pipeline_utils.metadata import (
     get_data_asset_url,
     get_docdb_records,
     get_metadata_for_records,
-    output_parameters_to_quality_control,
+    get_modality_from_records,
 )
 
 
@@ -421,13 +418,6 @@ def test_get_capsule_version_degrades_on_error(mock_release):
     assert get_capsule_version_ignoring_patches(Mock()) is None
 
 
-class MockOutputParameters(GenericModel):
-    """Output parameters model for quality control tests"""
-
-    unit_count: int = Field(..., description="Number of units")
-    firing_rates: list[float] = Field(...)
-
-
 def make_record(name, modalities):
     """Make a minimal metadata record for the given modalities"""
     return {
@@ -440,66 +430,18 @@ def make_record(name, modalities):
     }
 
 
-def test_output_parameters_to_quality_control():
-    """Each output parameter becomes a passing single-asset analysis metric."""
-    output_parameters = MockOutputParameters(
-        unit_count=3, firing_rates=[1.5, 2.0], extra_metric="extra"
-    )
-
-    qc = output_parameters_to_quality_control(
-        output_parameters,
-        [make_record("asset_1", [Modality.ECEPHYS, Modality.BEHAVIOR])],
-    )
-
-    assert [metric.name for metric in qc.metrics] == [
-        "unit_count",
-        "firing_rates",
-        "extra_metric",
+def test_get_modality_from_records_first_modality():
+    """The first modality of the first record listing one is used."""
+    records = [
+        {"name": "asset_1", "data_description": None},
+        make_record("asset_2", [Modality.ECEPHYS, Modality.BEHAVIOR]),
+        make_record("asset_3", [Modality.POPHYS]),
     ]
-    assert [metric.value for metric in qc.metrics] == [3, [1.5, 2.0], "extra"]
-    assert [metric.description for metric in qc.metrics] == [
-        "Number of units",
-        None,
-        None,
-    ]
-    for metric in qc.metrics:
-        assert metric.modality == Modality.ECEPHYS
-        assert metric.stage == Stage.ANALYSIS
-        assert metric.status.status == Status.PASS
-        assert metric.status.evaluator == "Automated"
-        assert metric.evaluated_assets is None
-    assert qc.default_grouping == []
-    assert qc.evaluate_status() == Status.PASS
+
+    assert get_modality_from_records(records) == Modality.ECEPHYS
 
 
-def test_output_parameters_to_quality_control_multi_asset():
-    """Multiple assets still make analysis metrics, and tags set the grouping."""
-    output_parameters = MockOutputParameters(unit_count=3, firing_rates=[])
-
-    qc = output_parameters_to_quality_control(
-        output_parameters,
-        [
-            {"name": "asset_1", "data_description": None},
-            make_record("asset_2", [Modality.POPHYS]),
-        ],
-        evaluator="Test evaluator",
-        tags={"analysis": "test_analysis"},
-    )
-
-    for metric in qc.metrics:
-        assert metric.modality == Modality.POPHYS
-        assert metric.stage == Stage.ANALYSIS
-        assert metric.evaluated_assets is None
-        assert metric.tags == {"analysis": "test_analysis"}
-        assert metric.status.evaluator == "Test evaluator"
-    assert qc.default_grouping == ["analysis"]
-
-
-def test_output_parameters_to_quality_control_no_modality():
+def test_get_modality_from_records_no_modality():
     """Records without a modality raise an error."""
-    output_parameters = MockOutputParameters(unit_count=3, firing_rates=[])
-
     with pytest.raises(ValueError, match="No modality found"):
-        output_parameters_to_quality_control(
-            output_parameters, [make_record("asset_1", [])]
-        )
+        get_modality_from_records([make_record("asset_1", [])])

@@ -22,8 +22,6 @@ from analysis_pipeline_utils.analysis_dispatch_model import AnalysisDispatchMode
 from analysis_pipeline_utils.metadata import (
     write_results_and_metadata,
     docdb_record_exists,
-    get_metadata_for_records,
-    output_parameters_to_quality_control,
 )
 
 logging.basicConfig(
@@ -146,20 +144,4 @@ def run_analysis_jobs(
         output_params = run_function(analysis_dispatch_inputs, analysis_params)
         process.end_date_time = datetime.now()
         process.output_parameters = analysis_output_model(**output_params)
-
-        try:
-            quality_control = output_parameters_to_quality_control(
-                process.output_parameters,
-                get_metadata_for_records(analysis_dispatch_inputs),
-            )
-        except Exception:
-            # quality control is best-effort metadata, never fail the run over it
-            logger.warning(
-                "Could not create quality control record, skipping it.",
-                exc_info=True,
-            )
-            quality_control = None
-
-        write_results_and_metadata(
-            processing, dry_run=dry_run, quality_control=quality_control
-        )
+        write_results_and_metadata(processing, dry_run=dry_run)

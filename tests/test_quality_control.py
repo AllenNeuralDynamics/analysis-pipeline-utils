@@ -62,20 +62,24 @@ def test_output_parameters_to_quality_control():
 
 
 def test_output_parameters_to_quality_control_multi_asset():
-    """Multiple assets still make analysis metrics, and tags set the grouping."""
+    """Multiple assets still make analysis metrics with the given status,
+    and tags set the grouping."""
     output_parameters = MockOutputParameters(unit_count=3, firing_rates=[])
 
     qc = output_parameters_to_quality_control(
         output_parameters,
         [make_record("asset_1", [Modality.POPHYS]), make_record("asset_2", [])],
         evaluator="Test evaluator",
+        status=Status.PENDING,
         tags={"analysis": "test_analysis"},
     )
 
     for metric in qc.metrics:
+        assert metric.status.status == Status.PENDING
         assert metric.modality == Modality.POPHYS
         assert metric.stage == Stage.ANALYSIS
         assert metric.evaluated_assets is None
         assert metric.tags == {"analysis": "test_analysis"}
         assert metric.status.evaluator == "Test evaluator"
     assert qc.default_grouping == ["analysis"]
+    assert qc.evaluate_status() == Status.PENDING

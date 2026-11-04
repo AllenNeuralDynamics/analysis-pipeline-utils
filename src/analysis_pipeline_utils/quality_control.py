@@ -19,13 +19,14 @@ def output_parameters_to_quality_control(
     output_parameters: GenericModel,
     input_records: List[Dict],
     evaluator: str = "Automated",
+    status: Status = Status.PASS,
     tags: Optional[Dict[str, str]] = None,
 ) -> QualityControl:
     """
     Map analysis output parameters to a QualityControl record,
     with one metric per output parameter.
 
-    All metrics are currently given a passing status.
+    All metrics are given the same status.
 
     Parameters
     ----------
@@ -37,6 +38,8 @@ def output_parameters_to_quality_control(
     evaluator : str, optional
         Name recorded as the evaluator of each metric's status,
         by default "Automated"
+    status : Status, optional
+        Status given to every metric, by default Status.PASS
     tags : Optional[Dict[str, str]], optional
         Tags applied to every metric, by default None
 
@@ -63,7 +66,7 @@ def output_parameters_to_quality_control(
             stage=Stage.ANALYSIS,
             value=value,
             status_history=[
-                QCStatus(evaluator=evaluator, status=Status.PASS, timestamp=timestamp)
+                QCStatus(evaluator=evaluator, status=status, timestamp=timestamp)
             ],
             description=fields[name].description if name in fields else None,
             tags=tags or {},

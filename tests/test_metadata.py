@@ -6,6 +6,7 @@ from types import SimpleNamespace as MockModel
 from unittest.mock import Mock, patch
 
 import pytest
+from aind_data_schema_models.modalities import Modality
 from codeocean.computation import Computation, ComputationState, Param
 
 from analysis_pipeline_utils.analysis_dispatch_model import (
@@ -23,6 +24,7 @@ from analysis_pipeline_utils.metadata import (
     get_data_asset_url,
     get_docdb_records,
     get_metadata_for_records,
+    get_modality_from_records,
 )
 
 
@@ -414,3 +416,32 @@ def test_get_capsule_version_degrades_on_error(mock_release):
     mock_release.side_effect = RuntimeError("git exploded")
 
     assert get_capsule_version_ignoring_patches(Mock()) is None
+
+
+def make_record(name, modalities):
+    """Make a minimal metadata record for the given modalities"""
+    return {
+        "name": name,
+        "data_description": {
+            "modalities": [
+                modality.model_dump(mode="json") for modality in modalities
+            ]
+        },
+    }
+
+
+def test_get_modality_from_records_first_modality():
+    """The first modality of the first record listing one is used."""
+    records = [
+        {"name": "asset_1", "data_description": None},
+        make_record("asset_2", [Modality.ECEPHYS, Modality.BEHAVIOR]),
+        make_record("asset_3", [Modality.POPHYS]),
+    ]
+
+    assert get_modality_from_records(records) == Modality.ECEPHYS
+
+
+def test_get_modality_from_records_no_modality():
+    """Records without a modality raise an error."""
+    with pytest.raises(ValueError, match="No modality found"):
+        get_modality_from_records([make_record("asset_1", [])])

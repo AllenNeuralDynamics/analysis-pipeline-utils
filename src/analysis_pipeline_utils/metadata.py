@@ -12,6 +12,7 @@ from aind_data_access_api.document_db import MetadataDbClient
 from aind_data_access_api.utils import get_record_from_docdb
 from aind_data_schema.components.identifiers import CombinedData, DataAsset
 from aind_data_schema.core.metadata import Metadata
+from aind_data_schema_models.modalities import Modality
 from codeocean import CodeOcean
 from codeocean.computation import Computation, PipelineProcess
 from codeocean.capsule import Capsule
@@ -164,6 +165,33 @@ def analysis_pipeline_processing_metadata(
         processing.data_processes[0].pipeline_name = pipeline_process.name
         processing.pipelines = [pipeline_process.code]
     return processing.model_validate(processing)
+
+
+def get_modality_from_records(records: List[Dict]) -> Modality.ONE_OF:
+    """
+    Get the modality of the input data assets from their metadata records
+
+    Parameters
+    ----------
+    records : List[Dict]
+        Metadata records of the input data assets
+
+    Returns
+    -------
+    Modality.ONE_OF
+        The first modality listed in the records' data descriptions
+
+    Raises
+    ------
+    ValueError
+        If none of the records list a modality
+    """
+    for record in records:
+        data_description = record.get("data_description") or {}
+        modalities = data_description.get("modalities") or []
+        if modalities:
+            return Modality.from_abbreviation(modalities[0]["abbreviation"])
+    raise ValueError("No modality found in the input data asset records")
 
 
 def _initialize_codeocean_client() -> CodeOcean:

@@ -13,8 +13,8 @@ from aind_data_access_api.utils import get_record_from_docdb
 from aind_data_schema.components.identifiers import CombinedData, DataAsset
 from aind_data_schema.core.metadata import Metadata
 from codeocean import CodeOcean
-from codeocean.computation import Computation, PipelineProcess
 from codeocean.capsule import Capsule
+from codeocean.computation import Computation, PipelineProcess
 
 from .analysis_dispatch_model import AnalysisDispatchModel
 from .result_files import (
@@ -203,7 +203,7 @@ def get_codeocean_process_metadata(
     # Extract relevant metadata from the computation
     process = ps.DataProcess.model_construct(
         # computation.name likely only set for named runs
-        experimenters=[os.getenv("CODEOCEAN_EMAIL", "unknown")],
+        experimenters=[computation.owner_email or "unknown"],
         process_type=ps.ProcessName.ANALYSIS,
         stage=ps.ProcessStage.ANALYSIS,
         start_date_time=datetime.fromtimestamp(computation.created),
@@ -254,9 +254,14 @@ def get_codeocean_process_metadata(
         branch = os.getenv("CO_CAPSULE_BRANCH", "HEAD")
         patch_list = os.getenv("PATCH_COMMITS")
         version = get_capsule_version_ignoring_patches(
-            capsule, patch_list=patch_list, branch=branch
+            capsule,
+            patch_list=patch_list,
+            branch=branch,
+            git_email=computation.owner_email,
         )
-        hash = get_capsule_commit_hash(capsule, branch)
+        hash = get_capsule_commit_hash(
+            capsule, branch=branch, git_email=computation.owner_email
+        )
         version = version or hash
         process.notes = f"Git commit hash: {hash}"
 
@@ -319,11 +324,12 @@ def _run_git_command(command: List[str]) -> str:
     return result.stdout.strip()
 
 
-def _get_git_remote_url(capsule_slug: str) -> str:
+def _get_git_remote_url(capsule_slug: str, git_email: Optional[str]) -> str:
     """Get the git remote URL for the specified capsule.
 
     Args:
         capsule_slug: Slug of the capsule
+        git_email: Email address for git authentication
 
     Returns:
         str: Remote URL of the git repository
@@ -332,31 +338,32 @@ def _get_git_remote_url(capsule_slug: str) -> str:
     credentials = os.getenv("GIT_ACCESS_TOKEN")
     domain = os.getenv("GIT_HOST")
     if not all([credentials, domain]):
-        try:
-            username = os.getenv("CODEOCEAN_EMAIL")
-            username = username.replace("@", "%40")
-            token = os.getenv("CODEOCEAN_API_TOKEN")
-            credentials = f"{username}:{token}"
-            domain = os.getenv("CODEOCEAN_DOMAIN")
-        except Exception:
+        token = os.getenv("CODEOCEAN_API_TOKEN")
+        if not git_email or not token:
             raise ValueError(
-                "GIT_ACCESS_TOKEN or CODEOCEAN_API_TOKEN "
-                "environment variable is required"
+                "GIT_ACCESS_TOKEN and GIT_HOST, or computation owner_email and "
+                "CODEOCEAN_API_TOKEN, are required"
             )
+        username = git_email.replace("@", "%40")
+        credentials = f"{username}:{token}"
+        domain = os.getenv("CODEOCEAN_DOMAIN") or "codeocean.allenneuraldynamics.org"
     return f"https://{credentials}@{domain}/capsule-{capsule_slug}.git"
 
 
-def get_capsule_commit_hash(capsule: Capsule, branch="HEAD") -> str:
+def get_capsule_commit_hash(
+    capsule: Capsule, branch="HEAD", git_email: Optional[str] = None
+) -> str:
     """Get the git version for a specific capsule from the remote repository.
 
     Args:
         capsule: Capsule object
         branch: Branch name or 'HEAD' to specify which version to retrieve
+        git_email: Email address for git authentication
 
     Returns:
         str: Commit hash of the HEAD of the capsule's git repository
     """
-    git_remote_url = _get_git_remote_url(capsule.slug)
+    git_remote_url = _get_git_remote_url(capsule.slug, git_email)
     git_commit_hash = _run_git_command(["git", "ls-remote", git_remote_url, branch])
     if not git_commit_hash:
         raise ValueError(f"Could not retrieve git commit hash for capsule {capsule}")
@@ -397,7 +404,10 @@ def _as_git_date(release_time: Union[int, str]) -> str:
 
 
 def get_commits_since_release(
-    capsule: Capsule, release_time: Union[int, str], branch="HEAD"
+    capsule: Capsule,
+    release_time: Union[int, str],
+    branch="HEAD",
+    git_email: Optional[str] = None,
 ) -> List[str]:
     """Get commits since the release time from the capsule's git repository.
 
@@ -405,13 +415,14 @@ def get_commits_since_release(
         capsule: Capsule object
         release_time: Unix timestamp or ISO 8601 timestamp to filter commits since
         branch: Branch name, or 'HEAD' for the remote's default branch
+        git_email: Email address for git authentication
 
     Returns:
         List of commit hashes since the release time
     """
     import tempfile
 
-    git_remote_url = _get_git_remote_url(capsule.slug)
+    git_remote_url = _get_git_remote_url(capsule.slug, git_email=git_email)
     since = _as_git_date(release_time)
 
     # Create a temporary directory for the bare clone
@@ -444,7 +455,10 @@ def get_commits_since_release(
 
 
 def get_capsule_version_ignoring_patches(
-    capsule: Capsule, branch="HEAD", patch_list: Optional[str] = None
+    capsule: Capsule,
+    branch="HEAD",
+    patch_list: Optional[str] = None,
+    git_email: Optional[str] = None,
 ) -> Optional[str]:
     """Get the capsule version from the latest release, ignoring patch commits.
     Args:
@@ -460,7 +474,10 @@ def get_capsule_version_ignoring_patches(
         release = get_latest_release(capsule)
         if release is not None:
             commits = get_commits_since_release(
-                capsule, release_time=release["release_time"], branch=branch
+                capsule,
+                release_time=release["release_time"],
+                branch=branch,
+                git_email=git_email,
             )
             if not set(commits).difference(set(patch_list)):
                 return f"{release['major_version']}.{release['minor_version']}"

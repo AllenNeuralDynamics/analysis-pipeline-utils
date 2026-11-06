@@ -13,17 +13,18 @@ from analysis_pipeline_utils.analysis_dispatch_model import (
     AnalysisDispatchModel,
 )
 from analysis_pipeline_utils.metadata import (
+    _get_git_remote_url,
     _initialize_codeocean_client,
     _run_git_command,
-    get_codeocean_process_metadata,
-    update_analysis_process,
     docdb_record_exists,
     extract_parameters,
     get_capsule_version_ignoring_patches,
+    get_codeocean_process_metadata,
     get_commits_since_release,
     get_data_asset_metadata,
     get_docdb_records,
     get_metadata_for_records,
+    update_analysis_process,
 )
 
 
@@ -166,6 +167,7 @@ def test_get_codeocean_process_metadata_formats_release_version(mock_client):
     computation = Mock(
         created=1622764800,
         run_time=3600,
+        owner_email="owner@example.com",
         processes=[
             Mock(
                 capsule_id="capsule-id",
@@ -185,11 +187,13 @@ def test_get_codeocean_process_metadata_formats_release_version(mock_client):
     mock_client.return_value.computations.get_computation.return_value = computation
     mock_client.return_value.capsules.get_capsule.return_value = capsule
 
-    result = get_codeocean_process_metadata(
-        computation_id="computation-id", capsule_id="capsule-id"
-    )
+    with patch.dict(os.environ, {"CODEOCEAN_EMAIL": "legacy@example.com"}):
+        result = get_codeocean_process_metadata(
+            computation_id="computation-id", capsule_id="capsule-id"
+        )
 
     assert result.code.version == "2.0"
+    assert result.experimenters == ["owner@example.com"]
 
 
 # Test _initialize_codeocean_client function
@@ -222,6 +226,25 @@ def test_run_git_command_success(mock_run):
     result = _run_git_command(["git", "test-command"])
     assert result == "test output"
     mock_run.assert_called_once()
+
+
+@patch.dict(
+    os.environ,
+    {
+        "CODEOCEAN_API_TOKEN": "api-token",
+        "CODEOCEAN_DOMAIN": "codeocean.example.org",
+        "CODEOCEAN_EMAIL": "legacy@example.com",
+    },
+    clear=True,
+)
+def test_get_git_remote_url_uses_capsule_owner_email():
+    """Uses the capsule API's owner email instead of CODEOCEAN_EMAIL."""
+    result = _get_git_remote_url("capsule-slug", "owner@example.com")
+
+    assert (
+        result == "https://owner%40example.com:api-token@codeocean.example.org/"
+        "capsule-capsule-slug.git"
+    )
 
 
 # Test get_data_asset_metadata function

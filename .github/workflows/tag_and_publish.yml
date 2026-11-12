@@ -86,3 +86,10 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.AIND_PYPI_TOKEN }}
+  bump_downstream:
+    needs: [tag, publish]
+    uses: ./.github/workflows/bump_downstream.yml
+    with:
+      version: ${{ needs.tag.outputs.new_version }}
+    secrets:
+      repo-token: ${{ secrets.SERVICE_TOKEN }}

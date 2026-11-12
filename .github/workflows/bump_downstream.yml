@@ -1,0 +1,106 @@
+name: Bump downstream capsules
+# Opens a PR in each downstream capsule repo pinning analysis-pipeline-utils
+# to a released version. Called by tag_and_publish.yml after PyPI publish;
+# can also be run manually with an existing PyPI version.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Released analysis-pipeline-utils version (e.g. 0.2.9)'
+        required: true
+        type: string
+    secrets:
+      repo-token:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Released analysis-pipeline-utils version (e.g. 0.2.9)'
+        required: true
+        type: string
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo:
+          - AllenNeuralDynamics/aind-analysis-job-dispatch
+          - AllenNeuralDynamics/aind-analysis-wrapper-template
+    env:
+      VERSION: ${{ inputs.version }}
+      PACKAGE: analysis-pipeline-utils
+    steps:
+      - name: Validate version
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: '$VERSION'" >&2
+            exit 1
+          fi
+      - name: Wait for version on PyPI
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf "https://pypi.org/pypi/${PACKAGE}/${VERSION}/json" > /dev/null; then
+              echo "${PACKAGE}==${VERSION} is on PyPI"
+              exit 0
+            fi
+            echo "Not on PyPI yet (attempt $i/30), retrying in 10s"
+            sleep 10
+          done
+          echo "${PACKAGE}==${VERSION} not found on PyPI" >&2
+          exit 1
+      - name: Checkout downstream repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          ref: dev
+          path: downstream
+          token: ${{ secrets.repo-token || secrets.SERVICE_TOKEN }}
+      - name: Update version pins
+        working-directory: downstream
+        shell: python
+        run: |
+          import os, re, sys
+
+          version = os.environ["VERSION"]
+          pkg = re.escape(os.environ["PACKAGE"])
+          targets = {
+              # RUN pip install ... analysis-pipeline-utils==X.Y.Z
+              "environment/Dockerfile": (
+                  rf"({pkg}==)[^\s\\]+",
+                  rf"\g<1>{version}",
+              ),
+              # {"name": "analysis-pipeline-utils", "version": "X.Y.Z"}
+              ".codeocean/environment.json": (
+                  rf'("name":\s*"{pkg}",\s*"version":\s*")[^"]+(")',
+                  rf"\g<1>{version}\g<2>",
+              ),
+          }
+          for path, (pattern, repl) in targets.items():
+              with open(path, encoding="utf-8", newline="") as f:
+                  text = f.read()
+              new_text, n = re.subn(pattern, repl, text)
+              if n == 0:
+                  sys.exit(f"No {os.environ['PACKAGE']} pin found in {path}")
+              with open(path, "w", encoding="utf-8", newline="") as f:
+                  f.write(new_text)
+              print(f"{path}: updated {n} pin(s)")
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          path: downstream
+          token: ${{ secrets.repo-token || secrets.SERVICE_TOKEN }}
+          base: dev
+          branch: bump-${{ env.PACKAGE }}-${{ env.VERSION }}
+          commit-message: "build: bump ${{ env.PACKAGE }} to ${{ env.VERSION }}"
+          title: "build: bump ${{ env.PACKAGE }} to ${{ env.VERSION }}"
+          body: |
+            Automated bump of `${{ env.PACKAGE }}` to [`${{ env.VERSION }}`](https://github.com/${{ github.repository }}/tree/v${{ env.VERSION }}).
+
+            Updates the pin in `environment/Dockerfile` and `.codeocean/environment.json`.
+
+            **After merging:** sync this repo into its Code Ocean capsule and confirm the environment rebuilds with the new version.
+
+            Opened by [${{ github.workflow }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+          delete-branch: true

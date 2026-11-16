@@ -3,9 +3,6 @@ name: Bump downstream capsules
 # to a released version. Called by tag_and_publish.yml after PyPI publish;
 # can also be run manually with an existing PyPI version.
 on:
-  push:
-    branches:
-      - 63-new-workflow-to-bump-library-versions-in-release-capsules  # TEMP: remove before merge
   workflow_call:
     inputs:
       version:
@@ -32,7 +29,7 @@ jobs:
           - AllenNeuralDynamics/aind-analysis-job-dispatch
           - AllenNeuralDynamics/aind-analysis-wrapper-template
     env:
-      VERSION: ${{ inputs.version || '0.3.0' }}  # TEMP: revert to inputs.version before merge
+      VERSION: ${{ inputs.version }}
       PACKAGE: analysis-pipeline-utils
     steps:
       - name: Validate version

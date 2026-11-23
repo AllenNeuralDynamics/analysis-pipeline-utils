@@ -61,13 +61,33 @@ jobs:
         working-directory: downstream
         shell: python
         run: |
-          import os, re, sys
+          import hashlib, os, re, sys
+
+          DOCKERFILE = "environment/Dockerfile"
+          HASH_PREFIX = "# hash:sha256:"
+
+          def body_hash(text):
+              """Code Ocean's stamp: sha256 of every byte after the first line."""
+              body = text.split("\n", 1)[1]
+              return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+          def stamp_of(text):
+              first = text.split("\n", 1)[0]
+              if not first.startswith(HASH_PREFIX):
+                  sys.exit(f"{DOCKERFILE}: line 1 is not a '{HASH_PREFIX}' stamp")
+              return first[len(HASH_PREFIX):].strip()
+
+          def changed_lines(old, new):
+              old_lines, new_lines = old.split("\n"), new.split("\n")
+              if len(old_lines) != len(new_lines):
+                  return None
+              return sum(a != b for a, b in zip(old_lines, new_lines))
 
           version = os.environ["VERSION"]
           pkg = re.escape(os.environ["PACKAGE"])
           targets = {
               # RUN pip install ... analysis-pipeline-utils==X.Y.Z
-              "environment/Dockerfile": (
+              DOCKERFILE: (
                   rf"({pkg}==)[^\s\\]+",
                   rf"\g<1>{version}",
               ),
@@ -80,9 +100,20 @@ jobs:
           for path, (pattern, repl) in targets.items():
               with open(path, encoding="utf-8", newline="") as f:
                   text = f.read()
+              if path == DOCKERFILE and stamp_of(text) != body_hash(text):
+                  sys.exit(
+                      f"{path}: hash stamp does not match its body before the bump; "
+                      "the Dockerfile was edited outside Code Ocean"
+                  )
               new_text, n = re.subn(pattern, repl, text)
               if n == 0:
                   sys.exit(f"No {os.environ['PACKAGE']} pin found in {path}")
+              if path == DOCKERFILE:
+                  # Restamp so Code Ocean sees the environment as current.
+                  new_text = f"{HASH_PREFIX}{body_hash(new_text)}\n" + new_text.split("\n", 1)[1]
+              expected = n + (1 if path == DOCKERFILE else 0)
+              if new_text != text and changed_lines(text, new_text) != expected:
+                  sys.exit(f"{path}: expected {expected} changed line(s), refusing to write")
               with open(path, "w", encoding="utf-8", newline="") as f:
                   f.write(new_text)
               print(f"{path}: updated {n} pin(s)")
@@ -98,7 +129,7 @@ jobs:
           body: |
             Automated bump of `${{ env.PACKAGE }}` to [`${{ env.VERSION }}`](https://github.com/${{ github.repository }}/tree/v${{ env.VERSION }}).
 
-            Updates the pin in `environment/Dockerfile` and `.codeocean/environment.json`.
+            Updates the pin in `environment/Dockerfile` and `.codeocean/environment.json`, and restamps the Dockerfile hash.
 
             **After merging:** sync this repo into its Code Ocean capsule and confirm the environment rebuilds with the new version.
 
